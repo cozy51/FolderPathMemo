@@ -1,6 +1,6 @@
 # FolderPath Memo
 
-Microsoft Edge 向けの、フォルダーパスを素早く見つけて再利用するための Manifest V3 拡張機能です。データはブラウザーのローカルストレージに保存され、外部サーバーには送信されません。
+Google Chrome 向けの、フォルダーパスを素早く見つけて再利用するための Manifest V3 拡張機能です。データはブラウザーのローカルストレージに保存され、外部サーバーには送信されません。
 
 ## 主な機能
 
@@ -13,18 +13,20 @@ Microsoft Edge 向けの、フォルダーパスを素早く見つけて再利�
 - 🏷 カンマ区切りのタグ登録とタグ絞り込み
 - 💾 JSON ファイルへのバックアップと復元
 
-## Edge へのインストール
+## Chrome へのインストール
 
-1. Edge で `edge://extensions` を開きます。
+1. Chrome で `chrome://extensions` を開きます。
 2. **開発者モード**を有効にします。
 3. **展開して読み込み**を選び、このリポジトリのフォルダーを指定します。
 4. ツールバーの「FolderPath Memo」を開きます。
 
-ネイティブホストのインストール完了メッセージはExplorer連携の準備完了を示すものであり、ポップアップを自動起動するものではありません。インストール後はEdgeを完全に再起動し、`edge://extensions`で再読み込みしてからツールバーのアイコンをクリックします。アイコンが見えない場合は、拡張機能メニュー（パズルのアイコン）でFolderPath Memoをツールバーへ固定してください。
+ネイティブホストのインストール完了メッセージはExplorer連携の準備完了を示すものであり、ポップアップを自動起動するものではありません。インストール後はChromeを完全に再起動し、`chrome://extensions`で再読み込みしてからツールバーのアイコンをクリックします。アイコンが見えない場合は、拡張機能メニュー（パズルのアイコン）でFolderPath Memoをツールバーへ固定してください。
 
-### Edgeが読み込むファイル
+> **Edge版から切り替える場合:** Chromeに表示される拡張機能IDはEdgeで使っていたIDと異なる場合があります。必ず`chrome://extensions`に表示されたIDを使って`install.ps1`を再実行してください。インストーラーはChrome専用のNative Messagingレジストリへ登録します。
 
-展開して読み込むフォルダーには、少なくとも次のファイルを同じ構成で配置してください。フォルダーを丸ごと入れ替えた後は、`edge://extensions`でFolderPath Memoの**再読み込み**ボタンを押します。
+### Chromeが読み込むファイル
+
+展開して読み込むフォルダーには、少なくとも次のファイルを同じ構成で配置してください。フォルダーを丸ごと入れ替えた後は、`chrome://extensions`でFolderPath Memoの**再読み込み**ボタンを押します。
 
 ```text
 FolderPathMemo\
@@ -45,7 +47,7 @@ FolderPathMemo\
 
 ブラウザー拡張機能はWindowsのプログラムを直接起動できないため、「開く」ボタンには同梱のNative Messagingホストが必要です。次の操作は初回だけ行います。
 
-1. `edge://extensions` に表示されるFolderPath Memoの**ID**をコピーします。
+1. `chrome://extensions` に表示されるFolderPath Memoの**ID**をコピーします。
 2. PowerShellを開き、リポジトリのフォルダーへ移動します。
 3. 次のコマンドを実行します（`<拡張機能ID>`をコピーしたIDに置き換えます）。
 
@@ -53,7 +55,7 @@ FolderPathMemo\
    powershell -ExecutionPolicy Bypass -File .\native-host\install.ps1 -ExtensionId <拡張機能ID>
    ```
 
-4. Edgeを再起動します。以降は「開く」で`explorer.exe`が起動します。
+4. Chromeを再起動します。以降は「開く」で`explorer.exe`が起動します。
 
 Windows 11（ビルド22621以降）でエクスプローラーがすでに起動している場合は、そのウィンドウへ新しいタブを追加します。対応するウィンドウがない場合やWindows 10では、新しいエクスプローラーウィンドウを開きます。
 
@@ -69,20 +71,20 @@ Windows 11（ビルド22621以降）でエクスプローラーがすでに起�
 Test-Path .\native-host\install.ps1
 ```
 
-`True`と表示されたら、現在の拡張機能IDで上記の`install.ps1`を実行してください。インストーラー自身が、実行ファイル、Native MessagingのJSON、Edgeレジストリ、`allowed_origins`のID一致まで検証します。`False`の場合は、ローカルのフォルダーが最新版ではないため、`native-host\install.ps1`と`native-host\FolderPathNativeHost.cs`を配置してから実行します。
+`True`と表示されたら、現在の拡張機能IDで上記の`install.ps1`を実行してください。インストーラー自身が、実行ファイル、Native MessagingのJSON、Chromeレジストリ、`allowed_origins`のID一致まで検証します。`False`の場合は、ローカルのフォルダーが最新版ではないため、`native-host\install.ps1`と`native-host\FolderPathNativeHost.cs`を配置してから実行します。
 
-### ポップアップが開かない場合
+### ポップアップが開かない場合（Chrome）
 
-1. `edge://extensions`でFolderPath Memoが有効であり、赤いエラーが表示されていないことを確認します。
+1. `chrome://extensions`でFolderPath Memoが有効であり、赤いエラーが表示されていないことを確認します。
 2. FolderPath Memoの**再読み込み**を押します。
-3. Edgeのウィンドウをすべて閉じ、タスクマネージャーにも`msedge.exe`が残っていない状態で起動し直します。
+3. Chromeのウィンドウをすべて閉じ、タスクマネージャーにも`chrome.exe`が残っていない状態で起動し直します。
 4. 拡張機能メニューからFolderPath Memoを固定し、ツールバーのアイコンをクリックします。
 5. アイコンから開けない場合は`Alt + Shift + F`を押します。
 6. それでも開けない場合は、拡張機能メニューでFolderPath Memoを右クリックし、**拡張機能のオプション**を選びます。これは同じ画面を通常のタブとして開く予備経路です。
 
-`edge://extensions`の「エラー」に`popup.html`、`popup.js`、`styles.css`の不足が表示される場合は、上記の必要ファイル構成をもう一度確認してください。
+`chrome://extensions`の「エラー」に`popup.html`、`popup.js`、`styles.css`の不足が表示される場合は、上記の必要ファイル構成をもう一度確認してください。
 
-InPrivateで使用する場合だけ、拡張機能の詳細画面で「InPrivateで許可」を有効にします。通常ウィンドウで使用するためにInPrivateを有効にする必要はありません。
+シークレットモードで使用する場合だけ、拡張機能の詳細画面で「シークレット モードでの実行を許可する」を有効にします。通常ウィンドウで使用するために、この設定は必要ありません。
 
 ## データ形式
 

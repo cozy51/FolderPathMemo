@@ -1,9 +1,13 @@
 {
   "manifest_version": 3,
   "name": "FolderPath Memo",
-  "version": "1.0.4",
-  "description": "よく使うフォルダーパスを、タグやお気に入りと一緒にすばやく管理します。",
-  "permissions": ["storage", "clipboardWrite", "nativeMessaging"],
+  "version": "1.1.0",
+  "description": "よく使うフォルダーパスを、Google Chromeでタグやお気に入りと一緒にすばやく管理します。",
+  "permissions": [
+    "storage",
+    "clipboardWrite",
+    "nativeMessaging"
+  ],
   "background": {
     "service_worker": "background.js"
   },

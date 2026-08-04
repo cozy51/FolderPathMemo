@@ -30,13 +30,9 @@ $manifest = @{
 } | ConvertTo-Json -Depth 3
 [IO.File]::WriteAllText($manifestPath, $manifest, [Text.UTF8Encoding]::new($false))
 
-@(
-    'HKCU:\Software\Microsoft\Edge\NativeMessagingHosts\jp.folderpath.memo',
-    'HKCU:\Software\Google\Chrome\NativeMessagingHosts\jp.folderpath.memo'
-) | ForEach-Object {
-    New-Item -Force -Path $_ | Out-Null
-    Set-Item -Path $_ -Value $manifestPath
-}
+$chromeRegistryPath = 'HKCU:\Software\Google\Chrome\NativeMessagingHosts\jp.folderpath.memo'
+New-Item -Force -Path $chromeRegistryPath | Out-Null
+Set-Item -Path $chromeRegistryPath -Value $manifestPath
 
 if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
     throw "Native host executable was not created: $executable"
@@ -44,9 +40,9 @@ if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
 if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
     throw "Native host manifest was not created: $manifestPath"
 }
-$registeredManifest = (Get-Item 'HKCU:\Software\Microsoft\Edge\NativeMessagingHosts\jp.folderpath.memo').GetValue('')
+$registeredManifest = (Get-Item $chromeRegistryPath).GetValue('')
 if ($registeredManifest -ne $manifestPath) {
-    throw "Edge native host registration does not match: $registeredManifest"
+    throw "Chrome native host registration does not match: $registeredManifest"
 }
 $installedManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 $expectedOrigin = "chrome-extension://$ExtensionId/"
@@ -59,5 +55,5 @@ Write-Host "Verified executable: $executable" -ForegroundColor Green
 Write-Host "Verified extension:  $expectedOrigin" -ForegroundColor Green
 Write-Host ''
 Write-Host 'Native host installation does not launch the popup.' -ForegroundColor Yellow
-Write-Host 'Next: completely restart Edge, reload the extension at edge://extensions, then click its toolbar icon.'
+Write-Host 'Next: completely restart Chrome, reload the extension at chrome://extensions, then click its toolbar icon.'
 Write-Host 'You can also press Alt+Shift+F, or select Extension options from the extension menu.'
