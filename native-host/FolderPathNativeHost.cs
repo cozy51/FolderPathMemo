@@ -13,6 +13,11 @@ internal static class FolderPathNativeHost
 {
     private const int MaximumMessageBytes = 1024 * 1024;
     private const int Windows11ExplorerTabsBuild = 22621;
+    private const int ExplorerActivationDelayMs = 400;
+    private const int NewTabReadyDelayMs = 1500;
+    private const int AddressBarReadyDelayMs = 500;
+    private const int ClipboardReadyDelayMs = 150;
+    private const int NavigationStartDelayMs = 1200;
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr FindWindow(string className, string windowName);
@@ -61,11 +66,11 @@ internal static class FolderPathNativeHost
         if (explorerWindow == IntPtr.Zero) return false;
 
         if (!SetForegroundWindow(explorerWindow)) return false;
-        Thread.Sleep(250);
+        Thread.Sleep(ExplorerActivationDelayMs);
         SendKeys.SendWait("^t");
-        Thread.Sleep(500);
+        Thread.Sleep(NewTabReadyDelayMs);
         SendKeys.SendWait("^l");
-        Thread.Sleep(200);
+        Thread.Sleep(AddressBarReadyDelayMs);
 
         string previousClipboard = null;
         bool hadClipboardText = false;
@@ -74,9 +79,11 @@ internal static class FolderPathNativeHost
             hadClipboardText = Clipboard.ContainsText();
             if (hadClipboardText) previousClipboard = Clipboard.GetText();
             Clipboard.SetText(path);
+            Thread.Sleep(ClipboardReadyDelayMs);
             SendKeys.SendWait("^v");
+            Thread.Sleep(ClipboardReadyDelayMs);
             SendKeys.SendWait("{ENTER}");
-            Thread.Sleep(300);
+            Thread.Sleep(NavigationStartDelayMs);
             return true;
         }
         catch
