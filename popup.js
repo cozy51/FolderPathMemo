@@ -98,7 +98,7 @@ async function openFolder(item) {
     item.openCount = (item.openCount ?? 0) + 1;
     await persist();
     render();
-    showToast('デスクトップ版エクスプローラーで開きました');
+    showToast(response.openedInTab ? 'エクスプローラーの新しいタブで開きました' : 'エクスプローラーで開きました');
   } catch (error) {
     await navigator.clipboard.writeText(item.path);
     showToast('パスをコピーしました。連携設定を確認してください');

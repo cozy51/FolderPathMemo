@@ -16,6 +16,7 @@ Add-Type -Path $source -OutputAssembly $executable -OutputType ConsoleApplicatio
     -ReferencedAssemblies @(
         (Join-Path $frameworkDirectory 'System.dll'),
         (Join-Path $frameworkDirectory 'System.Core.dll'),
+        (Join-Path $frameworkDirectory 'System.Windows.Forms.dll'),
         (Join-Path $frameworkDirectory 'System.Web.Extensions.dll')
     )
 
