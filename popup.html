@@ -31,6 +31,7 @@
         <div class="view-tabs" role="tablist" aria-label="表示切り替え">
           <button class="view-tab active" data-view="all" role="tab" type="button">すべて <span id="allCount">0</span></button>
           <button class="view-tab" data-view="favorite" role="tab" type="button">★ お気に入り <span id="favoriteCount">0</span></button>
+          <button class="view-tab" data-view="history" role="tab" type="button">履歴 <span id="historyCount">0</span></button>
         </div>
         <div class="backup-actions">
           <button id="importButton" class="text-button" type="button">インポート</button>
@@ -55,6 +56,15 @@
         <label class="favorite-check"><input id="favoriteInput" type="checkbox" /> <span>★ お気に入りに追加</span></label>
         <div class="dialog-actions"><button id="cancelButton" class="secondary-button" type="button">キャンセル</button><button class="primary-button" type="submit">保存する</button></div>
       </form>
+    </dialog>
+
+    <dialog id="setupDialog" class="setup-dialog">
+      <div class="setup-content">
+        <div class="dialog-header"><div><p class="eyebrow">EXPLORER CONNECTION</p><h2>エクスプローラー連携の設定</h2></div><button id="closeSetupDialog" class="icon-button" type="button" aria-label="閉じる">×</button></div>
+        <p>Edgeの制限により、デスクトップアプリを開くには初回だけ連携ホストのインストールが必要です。</p>
+        <ol><li><code>edge://extensions</code>でこの拡張機能のIDをコピー</li><li>配布フォルダーでPowerShellを開く</li><li>README記載のインストールコマンドを実行してEdgeを再起動</li></ol>
+        <button id="copySetupCommand" class="primary-button" type="button">セットアップコマンドをコピー</button>
+      </div>
     </dialog>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>

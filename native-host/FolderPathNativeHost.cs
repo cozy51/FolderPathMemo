@@ -11,27 +11,29 @@ internal static class FolderPathNativeHost
 
     public static void Main()
     {
-        using Stream input = Console.OpenStandardInput();
-        using Stream output = Console.OpenStandardOutput();
-        try
+        using (Stream input = Console.OpenStandardInput())
+        using (Stream output = Console.OpenStandardOutput())
         {
-            byte[] lengthBytes = ReadExactly(input, 4);
-            int length = BitConverter.ToInt32(lengthBytes, 0);
-            if (length <= 0 || length > MaximumMessageBytes) throw new InvalidDataException("Invalid message size.");
+            try
+            {
+                byte[] lengthBytes = ReadExactly(input, 4);
+                int length = BitConverter.ToInt32(lengthBytes, 0);
+                if (length <= 0 || length > MaximumMessageBytes) throw new InvalidDataException("Invalid message size.");
 
-            string json = Encoding.UTF8.GetString(ReadExactly(input, length));
-            var serializer = new JavaScriptSerializer();
-            var request = serializer.Deserialize<Dictionary<string, object>>(json);
-            string path = request.ContainsKey("path") ? Convert.ToString(request["path"]) : string.Empty;
-            if (string.IsNullOrWhiteSpace(path) || path.IndexOf('\0') >= 0) throw new InvalidDataException("Invalid folder path.");
+                string json = Encoding.UTF8.GetString(ReadExactly(input, length));
+                var serializer = new JavaScriptSerializer();
+                var request = serializer.Deserialize<Dictionary<string, object>>(json);
+                string path = request.ContainsKey("path") ? Convert.ToString(request["path"]) : string.Empty;
+                if (string.IsNullOrWhiteSpace(path) || path.IndexOf('\0') >= 0) throw new InvalidDataException("Invalid folder path.");
 
-            Process.Start(new ProcessStartInfo("explorer.exe", Quote(path)) { UseShellExecute = false });
-            Write(output, "{\"ok\":true}");
-        }
-        catch (Exception exception)
-        {
-            var serializer = new JavaScriptSerializer();
-            Write(output, serializer.Serialize(new { ok = false, error = exception.Message }));
+                Process.Start(new ProcessStartInfo("explorer.exe", Quote(path)) { UseShellExecute = false });
+                Write(output, "{\"ok\":true}");
+            }
+            catch (Exception exception)
+            {
+                var serializer = new JavaScriptSerializer();
+                Write(output, serializer.Serialize(new { ok = false, error = exception.Message }));
+            }
         }
     }
 
@@ -48,7 +50,10 @@ internal static class FolderPathNativeHost
         return buffer;
     }
 
-    private static string Quote(string value) => "\"" + value.Replace("\"", "\\\"") + "\"";
+    private static string Quote(string value)
+    {
+        return "\"" + value.Replace("\"", "\\\"") + "\"";
+    }
 
     private static void Write(Stream output, string json)
     {

@@ -5,6 +5,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$frameworkDirectory = [Runtime.InteropServices.RuntimeEnvironment]::GetRuntimeDirectory()
 $installDirectory = Join-Path $env:LOCALAPPDATA 'FolderPathMemo'
 New-Item -ItemType Directory -Force -Path $installDirectory | Out-Null
 
@@ -12,7 +13,11 @@ $source = Join-Path $PSScriptRoot 'FolderPathNativeHost.cs'
 $executable = Join-Path $installDirectory 'FolderPathNativeHost.exe'
 Remove-Item -Force -ErrorAction SilentlyContinue $executable
 Add-Type -Path $source -OutputAssembly $executable -OutputType ConsoleApplication `
-    -ReferencedAssemblies @('System.dll', 'System.Core.dll', 'System.Web.Extensions.dll')
+    -ReferencedAssemblies @(
+        (Join-Path $frameworkDirectory 'System.dll'),
+        (Join-Path $frameworkDirectory 'System.Core.dll'),
+        (Join-Path $frameworkDirectory 'System.Web.Extensions.dll')
+    )
 
 $manifestPath = Join-Path $installDirectory 'jp.folderpath.memo.json'
 $manifest = @{

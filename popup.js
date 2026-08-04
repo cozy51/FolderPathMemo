@@ -45,12 +45,15 @@ function render() {
   }));
   $('#allCount').textContent = state.items.length;
   $('#favoriteCount').textContent = state.items.filter((item) => item.favorite).length;
+  $('#historyCount').textContent = state.items.filter((item) => item.lastOpenedAt).length;
 
   const visible = state.items
-    .filter((item) => state.view === 'all' || item.favorite)
+    .filter((item) => state.view === 'all' || (state.view === 'favorite' && item.favorite) || (state.view === 'history' && item.lastOpenedAt))
     .filter((item) => !state.tag || item.tags.includes(state.tag))
     .filter((item) => fuzzyMatch([item.name, item.memo ?? '', item.path, ...item.tags].join(' '), state.query))
-    .sort((a, b) => Number(b.favorite) - Number(a.favorite) || b.updatedAt - a.updatedAt);
+    .sort((a, b) => state.view === 'history'
+      ? b.lastOpenedAt - a.lastOpenedAt
+      : Number(b.favorite) - Number(a.favorite) || b.updatedAt - a.updatedAt);
 
   list.replaceChildren();
   if (!visible.length) {
@@ -77,7 +80,7 @@ function createCard(item) {
   const copy = async () => { await navigator.clipboard.writeText(item.path); showToast('パスをコピーしました'); };
   card.querySelector('.copy-button').onclick = copy;
   card.querySelector('.path-value').onclick = copy;
-  card.querySelector('.open-button').onclick = () => openFolder(item.path);
+  card.querySelector('.open-button').onclick = () => openFolder(item);
   card.querySelector('.more-button').onclick = (event) => { event.stopPropagation(); card.querySelector('.card-menu').classList.toggle('open'); };
   card.querySelector('.edit-button').onclick = () => openEditor(item);
   card.querySelector('.delete-button').onclick = async () => {
@@ -87,14 +90,19 @@ function createCard(item) {
   return card;
 }
 
-async function openFolder(path) {
+async function openFolder(item) {
   try {
-    const response = await chrome.runtime.sendMessage({ type: 'open_folder', path });
+    const response = await chrome.runtime.sendMessage({ type: 'open_folder', path: item.path });
     if (!response?.ok) throw new Error(response?.error || 'ネイティブホストを起動できません。');
+    item.lastOpenedAt = Date.now();
+    item.openCount = (item.openCount ?? 0) + 1;
+    await persist();
+    render();
     showToast('デスクトップ版エクスプローラーで開きました');
   } catch (error) {
-    await navigator.clipboard.writeText(path);
-    showToast('連携機能が未設定です。パスをコピーしました');
+    await navigator.clipboard.writeText(item.path);
+    showToast('パスをコピーしました。連携設定を確認してください');
+    $('#setupDialog').showModal();
     console.warn('FolderPath native host:', error);
   }
 }
@@ -135,6 +143,12 @@ document.querySelectorAll('.view-tab').forEach((button) => button.onclick = () =
 });
 document.addEventListener('keydown', (event) => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); $('#searchInput').focus(); } });
 document.addEventListener('click', () => document.querySelectorAll('.card-menu.open').forEach((menu) => menu.classList.remove('open')));
+$('#closeSetupDialog').onclick = () => $('#setupDialog').close();
+$('#copySetupCommand').onclick = async () => {
+  const command = `powershell -ExecutionPolicy Bypass -File .\\native-host\\install.ps1 -ExtensionId ${chrome.runtime.id}`;
+  await navigator.clipboard.writeText(command);
+  showToast('セットアップコマンドをコピーしました');
+};
 
 $('#exportButton').onclick = () => {
   const blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), items: state.items }, null, 2)], { type: 'application/json' });
@@ -145,7 +159,7 @@ $('#importInput').onchange = async (event) => {
   try {
     const data = JSON.parse(await event.target.files[0].text());
     if (!Array.isArray(data.items) || data.items.some((item) => typeof item.name !== 'string' || typeof item.path !== 'string')) throw new Error('invalid');
-    state.items = data.items.map((item) => ({ id: item.id || crypto.randomUUID(), name: item.name, path: item.path, memo: typeof item.memo === 'string' ? item.memo : '', tags: Array.isArray(item.tags) ? item.tags : [], favorite: Boolean(item.favorite), updatedAt: Number(item.updatedAt) || Date.now() }));
+    state.items = data.items.map((item) => ({ id: item.id || crypto.randomUUID(), name: item.name, path: item.path, memo: typeof item.memo === 'string' ? item.memo : '', tags: Array.isArray(item.tags) ? item.tags : [], favorite: Boolean(item.favorite), updatedAt: Number(item.updatedAt) || Date.now(), lastOpenedAt: Number(item.lastOpenedAt) || 0, openCount: Number(item.openCount) || 0 }));
     await persist(); render(); showToast(`${state.items.length}件を復元しました`);
   } catch { showToast('バックアップファイルを読み込めませんでした'); }
   event.target.value = '';
