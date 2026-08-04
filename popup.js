@@ -7,6 +7,17 @@ const state = { items: [], query: '', view: 'all', tag: '', backupSignatures: {}
 const $ = (selector) => document.querySelector(selector);
 const list = $('#list');
 const dialog = $('#pathDialog');
+let nameAutoFill = true;
+
+function deriveFolderName(path) {
+  const normalized = path.trim().replace(/[\\/]+$/, '');
+  return normalized.split(/[\\/]/).filter(Boolean).pop() || path.trim();
+}
+
+function syncNameFromPath() {
+  if (!nameAutoFill) return;
+  $('#nameInput').value = deriveFolderName($('#pathInput').value);
+}
 
 function fuzzyMatch(text, query) {
   const source = text.toLocaleLowerCase();
@@ -137,13 +148,15 @@ async function openFolder(item) {
 function openEditor(item) {
   $('#dialogTitle').textContent = item ? 'フォルダーを編集' : 'フォルダーを登録';
   $('#itemId').value = item?.id ?? '';
+  nameAutoFill = !item;
   $('#nameInput').value = item?.name ?? '';
   $('#pathInput').value = item?.path ?? '';
   $('#memoInput').value = item?.memo ?? '';
   $('#tagsInput').value = item?.tags.join(', ') ?? '';
   $('#favoriteInput').checked = item?.favorite ?? false;
+  syncNameFromPath();
   dialog.showModal();
-  $('#nameInput').focus();
+  (item ? $('#nameInput') : $('#pathInput')).focus();
 }
 
 $('#pathForm').addEventListener('submit', async (event) => {
@@ -151,7 +164,7 @@ $('#pathForm').addEventListener('submit', async (event) => {
   const id = $('#itemId').value;
   const existing = state.items.find((item) => item.id === id);
   const path = $('#pathInput').value.trim();
-  const derivedName = path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path;
+  const derivedName = deriveFolderName(path);
   const item = {
     id: id || crypto.randomUUID(), name: $('#nameInput').value.trim() || derivedName, path,
     memo: $('#memoInput').value.trim(),
@@ -163,6 +176,8 @@ $('#pathForm').addEventListener('submit', async (event) => {
 });
 
 $('#addButton').onclick = () => openEditor();
+$('#nameInput').oninput = () => { nameAutoFill = $('#nameInput').value.trim() === deriveFolderName($('#pathInput').value); };
+$('#pathInput').oninput = syncNameFromPath;
 $('#libraryButton').onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL('library.html') });
 $('#closeDialog').onclick = $('#cancelButton').onclick = () => dialog.close();
 $('#searchInput').oninput = (event) => { state.query = event.target.value; render(); };
