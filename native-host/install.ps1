@@ -57,4 +57,7 @@ if ($installedManifest.allowed_origins -notcontains $expectedOrigin) {
 Write-Host 'FolderPath Memo native host was installed.' -ForegroundColor Green
 Write-Host "Verified executable: $executable" -ForegroundColor Green
 Write-Host "Verified extension:  $expectedOrigin" -ForegroundColor Green
-Write-Host 'Restart Edge before using the Open button.'
+Write-Host ''
+Write-Host 'Native host installation does not launch the popup.' -ForegroundColor Yellow
+Write-Host 'Next: completely restart Edge, reload the extension at edge://extensions, then click its toolbar icon.'
+Write-Host 'You can also press Alt+Shift+F, or select Extension options from the extension menu.'
