@@ -49,7 +49,7 @@ function render() {
   const visible = state.items
     .filter((item) => state.view === 'all' || item.favorite)
     .filter((item) => !state.tag || item.tags.includes(state.tag))
-    .filter((item) => fuzzyMatch([item.name, item.path, ...item.tags].join(' '), state.query))
+    .filter((item) => fuzzyMatch([item.name, item.memo ?? '', item.path, ...item.tags].join(' '), state.query))
     .sort((a, b) => Number(b.favorite) - Number(a.favorite) || b.updatedAt - a.updatedAt);
 
   list.replaceChildren();
@@ -69,6 +69,7 @@ function createCard(item) {
   const card = $('#itemTemplate').content.firstElementChild.cloneNode(true);
   card.querySelector('h3').textContent = item.name;
   card.querySelector('.path-value').textContent = item.path;
+  card.querySelector('.path-memo').textContent = item.memo ?? '';
   const favorite = card.querySelector('.favorite-button');
   favorite.classList.toggle('active', item.favorite);
   card.querySelector('.card-tags').replaceChildren(...item.tags.slice(0, 3).map((tag) => { const el = document.createElement('span'); el.textContent = tag; return el; }));
@@ -87,15 +88,14 @@ function createCard(item) {
 }
 
 async function openFolder(path) {
-  const normalized = path.replaceAll('\\', '/');
-  const url = normalized.startsWith('file:') ? normalized : `file:///${normalized.replace(/^\/+/, '')}`;
   try {
-    if (!globalThis.chrome?.tabs) throw new Error('tabs unavailable');
-    await chrome.tabs.create({ url });
-    showToast('エクスプローラーで開きます');
-  } catch {
+    const response = await chrome.runtime.sendMessage({ type: 'open_folder', path });
+    if (!response?.ok) throw new Error(response?.error || 'ネイティブホストを起動できません。');
+    showToast('デスクトップ版エクスプローラーで開きました');
+  } catch (error) {
     await navigator.clipboard.writeText(path);
-    showToast('パスをコピーしました。Win + R に貼り付けてください');
+    showToast('連携機能が未設定です。パスをコピーしました');
+    console.warn('FolderPath native host:', error);
   }
 }
 
@@ -104,6 +104,7 @@ function openEditor(item) {
   $('#itemId').value = item?.id ?? '';
   $('#nameInput').value = item?.name ?? '';
   $('#pathInput').value = item?.path ?? '';
+  $('#memoInput').value = item?.memo ?? '';
   $('#tagsInput').value = item?.tags.join(', ') ?? '';
   $('#favoriteInput').checked = item?.favorite ?? false;
   dialog.showModal();
@@ -114,8 +115,11 @@ $('#pathForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   const id = $('#itemId').value;
   const existing = state.items.find((item) => item.id === id);
+  const path = $('#pathInput').value.trim();
+  const derivedName = path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path;
   const item = {
-    id: id || crypto.randomUUID(), name: $('#nameInput').value.trim(), path: $('#pathInput').value.trim(),
+    id: id || crypto.randomUUID(), name: $('#nameInput').value.trim() || derivedName, path,
+    memo: $('#memoInput').value.trim(),
     tags: [...new Set($('#tagsInput').value.split(',').map((tag) => tag.trim()).filter(Boolean))],
     favorite: $('#favoriteInput').checked, updatedAt: Date.now()
   };
@@ -141,7 +145,7 @@ $('#importInput').onchange = async (event) => {
   try {
     const data = JSON.parse(await event.target.files[0].text());
     if (!Array.isArray(data.items) || data.items.some((item) => typeof item.name !== 'string' || typeof item.path !== 'string')) throw new Error('invalid');
-    state.items = data.items.map((item) => ({ id: item.id || crypto.randomUUID(), name: item.name, path: item.path, tags: Array.isArray(item.tags) ? item.tags : [], favorite: Boolean(item.favorite), updatedAt: Number(item.updatedAt) || Date.now() }));
+    state.items = data.items.map((item) => ({ id: item.id || crypto.randomUUID(), name: item.name, path: item.path, memo: typeof item.memo === 'string' ? item.memo : '', tags: Array.isArray(item.tags) ? item.tags : [], favorite: Boolean(item.favorite), updatedAt: Number(item.updatedAt) || Date.now() }));
     await persist(); render(); showToast(`${state.items.length}件を復元しました`);
   } catch { showToast('バックアップファイルを読み込めませんでした'); }
   event.target.value = '';
