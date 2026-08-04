@@ -1,9 +1,9 @@
 const storage = globalThis.chrome?.storage?.local ?? {
-  async get(key) { return { [key]: JSON.parse(localStorage.getItem(key) || '[]') }; },
+  async get(key) { const keys = Array.isArray(key) ? key : [key]; return Object.fromEntries(keys.map((name) => [name, JSON.parse(localStorage.getItem(name) || (name === 'folderPaths' ? '[]' : '{}'))])); },
   async set(value) { Object.entries(value).forEach(([key, data]) => localStorage.setItem(key, JSON.stringify(data))); }
 };
 
-const state = { items: [], query: '', view: 'all', tag: '' };
+const state = { items: [], query: '', view: 'all', tag: '', backupSignatures: {} };
 const $ = (selector) => document.querySelector(selector);
 const list = $('#list');
 const dialog = $('#pathDialog');
@@ -22,7 +22,20 @@ function fuzzyMatch(text, query) {
 
 async function persist() {
   await storage.set({ folderPaths: state.items });
+  updateBackupCount();
   $('#statusText').textContent = 'すべての変更を保存しました';
+}
+
+function makeSignatures() { return Object.fromEntries(state.items.map((item) => [item.id, JSON.stringify(item)])); }
+function updateBackupCount() {
+  const current = makeSignatures();
+  const ids = new Set([...Object.keys(current), ...Object.keys(state.backupSignatures)]);
+  const count = [...ids].filter((id) => current[id] !== state.backupSignatures[id]).length;
+  const badge = $('#backupChangeCount'); badge.textContent = count; badge.classList.toggle('clean', count === 0); badge.title = `前回バックアップから ${count} 件変更`;
+}
+function backupFilename(now = new Date()) {
+  const pad = (value) => String(value).padStart(2, '0');
+  return `backup-ext_FolderPathMemo_${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.json`;
 }
 
 function showToast(message) {
@@ -165,9 +178,10 @@ $('#copySetupCommand').onclick = async () => {
   showToast('セットアップコマンドをコピーしました');
 };
 
-$('#exportButton').onclick = () => {
+$('#exportButton').onclick = async () => {
   const blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), items: state.items }, null, 2)], { type: 'application/json' });
-  const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `folderpath-backup-${new Date().toISOString().slice(0, 10)}.json`; link.click(); URL.revokeObjectURL(link.href); showToast('バックアップを作成しました');
+  const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = backupFilename(); link.click(); URL.revokeObjectURL(link.href);
+  state.backupSignatures = makeSignatures(); await storage.set({ folderPathBackupState: state.backupSignatures }); updateBackupCount(); showToast('バックアップを作成しました');
 };
 $('#importButton').onclick = () => $('#importInput').click();
 $('#importInput').onchange = async (event) => {
@@ -180,4 +194,4 @@ $('#importInput').onchange = async (event) => {
   event.target.value = '';
 };
 
-(async () => { const saved = await storage.get('folderPaths'); state.items = Array.isArray(saved.folderPaths) ? saved.folderPaths : []; render(); })();
+(async () => { const saved = await storage.get(['folderPaths', 'folderPathBackupState']); state.items = Array.isArray(saved.folderPaths) ? saved.folderPaths : []; state.backupSignatures = saved.folderPathBackupState && typeof saved.folderPathBackupState === 'object' ? saved.folderPathBackupState : {}; render(); updateBackupCount(); })();
