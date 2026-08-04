@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "FolderPath Memo",
+  "version": "1.3.0",
+  "description": "よく使うフォルダーパスを、Google Chromeでタグやお気に入りと一緒にすばやく管理します。",
+  "permissions": [
+    "storage",
+    "clipboardWrite",
+    "nativeMessaging"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "FolderPath Memo",
+    "default_popup": "popup.html"
+  },
+  "options_page": "popup.html",
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Alt+Shift+F"
+      },
+      "description": "FolderPath Memoを開く"
+    }
+  }
+}
