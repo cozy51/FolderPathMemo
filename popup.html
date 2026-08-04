@@ -34,6 +34,7 @@
           <button class="view-tab" data-view="history" role="tab" type="button">履歴 <span id="historyCount">0</span></button>
         </div>
         <div class="backup-actions">
+          <button id="libraryButton" class="text-button" type="button">↗ 一覧表示</button>
           <button id="importButton" class="text-button" type="button">インポート</button>
           <button id="exportButton" class="text-button" type="button">バックアップ</button>
           <input id="importInput" type="file" accept="application/json,.json" hidden />
@@ -42,7 +43,7 @@
 
       <section id="list" class="path-list" aria-live="polite"></section>
 
-      <footer><span id="statusText">ローカルに安全に保存されます</span><span>FolderPath Memo v1.1.1</span></footer>
+      <footer><span id="statusText">クリックで開く・ダブルクリックで編集</span><span>FolderPath Memo v1.2.0</span></footer>
     </main>
 
     <dialog id="pathDialog">
@@ -69,7 +70,7 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <template id="itemTemplate">
-      <article class="path-card">
+      <article class="path-card" tabindex="0" title="クリックで開く・ダブルクリックで編集">
         <button class="favorite-button" type="button" aria-label="お気に入り切り替え">★</button>
         <div class="path-main"><div class="path-title-row"><h3></h3><div class="card-tags"></div></div><p class="path-memo"></p><button class="path-value" type="button" title="クリックしてコピー"></button></div>
         <div class="card-actions">

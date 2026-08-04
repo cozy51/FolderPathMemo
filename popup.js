@@ -87,6 +87,20 @@ function createCard(item) {
     if (!confirm(`「${item.name}」を削除しますか？`)) return;
     state.items = state.items.filter(({ id }) => id !== item.id); await persist(); render(); showToast('削除しました');
   };
+  card.onclick = (event) => {
+    if (event.target.closest('button, .card-menu')) return;
+    clearTimeout(card.openTimer);
+    card.openTimer = setTimeout(() => openFolder(item), 400);
+  };
+  card.ondblclick = (event) => {
+    if (event.target.closest('button, .card-menu')) return;
+    event.preventDefault();
+    clearTimeout(card.openTimer);
+    openEditor(item);
+  };
+  card.onkeydown = (event) => {
+    if (event.key === 'Enter') openFolder(item);
+  };
   return card;
 }
 
@@ -136,6 +150,7 @@ $('#pathForm').addEventListener('submit', async (event) => {
 });
 
 $('#addButton').onclick = () => openEditor();
+$('#libraryButton').onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL('library.html') });
 $('#closeDialog').onclick = $('#cancelButton').onclick = () => dialog.close();
 $('#searchInput').oninput = (event) => { state.query = event.target.value; render(); };
 document.querySelectorAll('.view-tab').forEach((button) => button.onclick = () => {

@@ -2,3 +2,4 @@
 
 .path-memo{margin:5px 0 1px;max-width:365px;color:#2764e7;font-size:13px;font-weight:700;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.path-memo:empty{display:none}form>label>textarea{display:block;width:100%;margin-top:7px;padding:10px 12px;border:1px solid #dce1e9;border-radius:8px;outline:none;resize:vertical}form>label>textarea:focus{border-color:#6e98ef;box-shadow:0 0 0 3px #2764e712}.setup-dialog{width:490px}.setup-content{padding:25px}.setup-content>p,.setup-content li{color:#59677d;font-size:12px;line-height:1.7}.setup-content ol{padding-left:20px;margin:14px 0 20px}.setup-content code{background:#eef2f7;border-radius:4px;padding:2px 5px}
 .brand-mark img{display:block;width:45px;height:45px}
+.path-card{cursor:pointer}.path-card:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
