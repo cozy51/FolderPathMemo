@@ -20,9 +20,6 @@ internal static class FolderPathNativeHost
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr window);
 
-    [DllImport("user32.dll")]
-    private static extern bool ShowWindow(IntPtr window, int command);
-
     [STAThread]
     public static void Main()
     {
@@ -63,15 +60,41 @@ internal static class FolderPathNativeHost
         IntPtr explorerWindow = FindWindow("CabinetWClass", null);
         if (explorerWindow == IntPtr.Zero) return false;
 
-        ShowWindow(explorerWindow, 9);
         if (!SetForegroundWindow(explorerWindow)) return false;
-        Thread.Sleep(150);
-        SendKeys.SendWait("^t");
         Thread.Sleep(250);
+        SendKeys.SendWait("^t");
+        Thread.Sleep(500);
         SendKeys.SendWait("^l");
-        Thread.Sleep(100);
-        SendKeys.SendWait(EscapeForSendKeys(path) + "{ENTER}");
-        return true;
+        Thread.Sleep(200);
+
+        string previousClipboard = null;
+        bool hadClipboardText = false;
+        try
+        {
+            hadClipboardText = Clipboard.ContainsText();
+            if (hadClipboardText) previousClipboard = Clipboard.GetText();
+            Clipboard.SetText(path);
+            SendKeys.SendWait("^v");
+            SendKeys.SendWait("{ENTER}");
+            Thread.Sleep(300);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+        finally
+        {
+            try
+            {
+                if (hadClipboardText) Clipboard.SetText(previousClipboard);
+                else Clipboard.Clear();
+            }
+            catch
+            {
+                // Explorer has already received the path; clipboard restoration is best-effort.
+            }
+        }
     }
 
     private static int GetWindowsBuildNumber()
@@ -88,23 +111,6 @@ internal static class FolderPathNativeHost
         {
             return 0;
         }
-    }
-
-    private static string EscapeForSendKeys(string value)
-    {
-        var escaped = new StringBuilder(value.Length * 2);
-        foreach (char character in value)
-        {
-            if ("+^%~()[]{}".IndexOf(character) >= 0)
-            {
-                escaped.Append('{').Append(character).Append('}');
-            }
-            else
-            {
-                escaped.Append(character);
-            }
-        }
-        return escaped.ToString();
     }
 
     private static byte[] ReadExactly(Stream stream, int count)
