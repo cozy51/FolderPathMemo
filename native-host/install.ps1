@@ -38,5 +38,23 @@ $manifest = @{
     Set-Item -Path $_ -Value $manifestPath
 }
 
+if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+    throw "Native host executable was not created: $executable"
+}
+if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+    throw "Native host manifest was not created: $manifestPath"
+}
+$registeredManifest = (Get-Item 'HKCU:\Software\Microsoft\Edge\NativeMessagingHosts\jp.folderpath.memo').GetValue('')
+if ($registeredManifest -ne $manifestPath) {
+    throw "Edge native host registration does not match: $registeredManifest"
+}
+$installedManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+$expectedOrigin = "chrome-extension://$ExtensionId/"
+if ($installedManifest.allowed_origins -notcontains $expectedOrigin) {
+    throw "Extension ID was not registered: $expectedOrigin"
+}
+
 Write-Host 'FolderPath Memo native host was installed.' -ForegroundColor Green
+Write-Host "Verified executable: $executable" -ForegroundColor Green
+Write-Host "Verified extension:  $expectedOrigin" -ForegroundColor Green
 Write-Host 'Restart Edge before using the Open button.'
