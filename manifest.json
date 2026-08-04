@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "FolderPath Memo",
+  "version": "1.0.2",
+  "description": "よく使うフォルダーパスを、タグやお気に入りと一緒にすばやく管理します。",
+  "permissions": ["storage", "clipboardWrite", "nativeMessaging"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "FolderPath Memo",
+    "default_popup": "popup.html"
+  }
+}
