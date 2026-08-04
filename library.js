@@ -1,4 +1,4 @@
-const state = { items: [], query: '', view: 'all', tag: '' };
+const state = { items: [], query: '', view: 'all', tag: '', backupSignatures: {} };
 const $ = (selector) => document.querySelector(selector);
 const dialog = $('#pathDialog');
 
@@ -8,7 +8,10 @@ function fuzzyMatch(text, query) {
   return true;
 }
 function showToast(message) { const toast = $('#toast'); toast.textContent = message; toast.classList.add('show'); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.classList.remove('show'), 1600); }
-async function persist() { await chrome.storage.local.set({ folderPaths: state.items }); }
+async function persist() { await chrome.storage.local.set({ folderPaths: state.items }); updateBackupCount(); }
+function makeSignatures() { return Object.fromEntries(state.items.map((item) => [item.id, JSON.stringify(item)])); }
+function updateBackupCount() { const current = makeSignatures(); const ids = new Set([...Object.keys(current), ...Object.keys(state.backupSignatures)]); const count = [...ids].filter((id) => current[id] !== state.backupSignatures[id]).length; const badge = $('#backupChangeCount'); badge.textContent = count; badge.classList.toggle('clean', count === 0); badge.title = `前回バックアップから ${count} 件変更`; }
+function backupFilename(now = new Date()) { const pad = (value) => String(value).padStart(2, '0'); return `backup-ext_FolderPathMemo_${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.json`; }
 
 async function openFolder(item) {
   try {
@@ -62,7 +65,7 @@ $('#pathForm').onsubmit = async (event) => {
 $('#addButton').onclick = () => openEditor(); $('#closeDialog').onclick = $('#cancelButton').onclick = () => dialog.close();
 $('#searchInput').oninput = (event) => { state.query = event.target.value; render(); };
 document.querySelectorAll('.view-tab').forEach((button) => button.onclick = () => { state.view = button.dataset.view; document.querySelectorAll('.view-tab').forEach((tab) => tab.classList.toggle('active', tab === button)); render(); });
-$('#exportButton').onclick = () => { const blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), items: state.items }, null, 2)], { type: 'application/json' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `folderpath-backup-${new Date().toISOString().slice(0, 10)}.json`; link.click(); URL.revokeObjectURL(link.href); showToast('バックアップを作成しました'); };
+$('#exportButton').onclick = async () => { const blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), items: state.items }, null, 2)], { type: 'application/json' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = backupFilename(); link.click(); URL.revokeObjectURL(link.href); state.backupSignatures = makeSignatures(); await chrome.storage.local.set({ folderPathBackupState: state.backupSignatures }); updateBackupCount(); showToast('バックアップを作成しました'); };
 $('#importButton').onclick = () => $('#importInput').click();
 $('#importInput').onchange = async (event) => { try { const data = JSON.parse(await event.target.files[0].text()); if (!Array.isArray(data.items) || data.items.some((item) => typeof item.name !== 'string' || typeof item.path !== 'string')) throw new Error(); state.items = data.items.map((item) => ({ id: item.id || crypto.randomUUID(), name: item.name, path: item.path, memo: typeof item.memo === 'string' ? item.memo : '', tags: Array.isArray(item.tags) ? item.tags : [], favorite: Boolean(item.favorite), updatedAt: Number(item.updatedAt) || Date.now(), lastOpenedAt: Number(item.lastOpenedAt) || 0, openCount: Number(item.openCount) || 0 })); await persist(); render(); showToast(`${state.items.length}件を復元しました`); } catch { showToast('バックアップを読み込めませんでした'); } event.target.value = ''; };
-(async () => { const saved = await chrome.storage.local.get('folderPaths'); state.items = Array.isArray(saved.folderPaths) ? saved.folderPaths : []; render(); })();
+(async () => { const saved = await chrome.storage.local.get(['folderPaths', 'folderPathBackupState']); state.items = Array.isArray(saved.folderPaths) ? saved.folderPaths : []; state.backupSignatures = saved.folderPathBackupState && typeof saved.folderPathBackupState === 'object' ? saved.folderPathBackupState : {}; render(); updateBackupCount(); })();

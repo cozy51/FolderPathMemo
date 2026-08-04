@@ -18,7 +18,7 @@
         <div class="header-actions">
           <button id="libraryButton" class="library-button" type="button"><span>▤</span> 一覧表示</button>
           <button id="importButton" class="header-utility-button" type="button">インポート</button>
-          <button id="exportButton" class="header-utility-button" type="button">バックアップ</button>
+          <div class="backup-control"><button id="exportButton" class="header-utility-button" type="button">バックアップ</button><span id="backupChangeCount" class="change-badge" title="前回バックアップからの変更件数">0</span></div>
           <button id="addButton" class="primary-button" type="button"><span>＋</span> 新規登録</button>
           <input id="importInput" type="file" accept="application/json,.json" hidden />
         </div>
@@ -43,7 +43,7 @@
 
       <section id="list" class="path-list" aria-live="polite"></section>
 
-      <footer><span id="statusText">クリックで開く・ダブルクリックで編集</span><span>FolderPath Memo v1.3.1</span></footer>
+      <footer><span id="statusText">クリックで開く・ダブルクリックで編集</span><span>FolderPath Memo v1.3.2</span></footer>
     </main>
 
     <dialog id="pathDialog">
