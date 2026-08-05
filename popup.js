@@ -44,6 +44,15 @@ function updateBackupCount() {
   const count = [...ids].filter((id) => current[id] !== state.backupSignatures[id]).length;
   const badge = $('#backupChangeCount'); badge.textContent = count; badge.classList.toggle('clean', count === 0); badge.title = `前回バックアップから ${count} 件変更`;
 }
+function normalizeFiles(files) { return Array.isArray(files) ? files.map((file) => ({ name: String(file.name ?? '').trim(), memo: String(file.memo ?? '').trim() })).filter((file) => file.name || file.memo) : []; }
+function fileSearchText(item) { return normalizeFiles(item.files).flatMap((file) => [file.name, file.memo]).join(' '); }
+function getFileRows() { return [...document.querySelectorAll('#fileRows .file-row')]; }
+function updateFileOrderOptions() { const rows = getFileRows(); rows.forEach((row, index) => { const select = row.querySelector('.file-order-select'); const current = String(index + 1); select.replaceChildren(...rows.map((_, optionIndex) => { const option = document.createElement('option'); option.value = String(optionIndex + 1); option.textContent = String(optionIndex + 1); return option; })); select.value = current; }); }
+function moveFileRow(row, targetIndex) { const rows = getFileRows(); const currentIndex = rows.indexOf(row); if (currentIndex < 0 || targetIndex < 0 || targetIndex >= rows.length || currentIndex === targetIndex) return; row.remove(); const orderedRows = getFileRows(); $('#fileRows').insertBefore(row, orderedRows[targetIndex] ?? null); updateFileOrderOptions(); }
+function readFileRows() { return getFileRows().map((row) => ({ name: row.querySelector('.file-name-input').value.trim(), memo: row.querySelector('.file-memo-input').value.trim() })).filter((file) => file.name || file.memo); }
+function addFileRow(file = {}) { const row = document.createElement('div'); row.className = 'file-row'; row.draggable = true; row.innerHTML = '<select class="file-order-select" aria-label="No"></select><input class="file-name-input" maxlength="160" placeholder="ファイル名" /><input class="file-memo-input" maxlength="240" placeholder="ファイルメモ" /><button class="remove-file-button" type="button" aria-label="ファイル行を削除">×</button>'; row.querySelector('.file-name-input').value = file.name ?? ''; row.querySelector('.file-memo-input').value = file.memo ?? ''; row.querySelector('.file-order-select').onchange = (event) => moveFileRow(row, Number(event.target.value) - 1); row.querySelector('.remove-file-button').onclick = () => { row.remove(); updateFileOrderOptions(); }; row.ondragstart = (event) => { row.classList.add('dragging'); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(getFileRows().indexOf(row))); }; row.ondragend = () => row.classList.remove('dragging'); row.ondragover = (event) => event.preventDefault(); row.ondrop = (event) => { event.preventDefault(); const source = getFileRows()[Number(event.dataTransfer.getData('text/plain'))]; if (source && source !== row) moveFileRow(source, getFileRows().indexOf(row)); }; $('#fileRows').append(row); updateFileOrderOptions(); }
+function renderFileRows(files = []) { $('#fileRows').replaceChildren(); const normalized = normalizeFiles(files); (normalized.length ? normalized : [{}]).forEach(addFileRow); updateFileOrderOptions(); }
+function createFileList(item) { const files = normalizeFiles(item.files); const wrap = document.createElement('div'); wrap.className = 'folder-file-list'; if (!files.length) { wrap.innerHTML = '<p class="file-list-empty">登録されたファイルはありません。編集画面からファイルリストを追加できます。</p>'; return wrap; } files.forEach((file, index) => { const button = document.createElement('button'); button.type = 'button'; button.className = 'file-list-item'; const no = document.createElement('span'); no.className = 'file-list-no'; no.textContent = String(index + 1); const name = document.createElement('span'); name.className = 'file-list-name'; name.textContent = file.name || '（ファイル名なし）'; const memo = document.createElement('span'); memo.className = 'file-list-memo'; memo.textContent = file.memo; button.append(no, name, memo); button.onclick = async (event) => { event.stopPropagation(); await navigator.clipboard.writeText(file.name); showToast('ファイル名をコピーしました'); }; wrap.append(button); }); return wrap; }
 function backupFilename(now = new Date()) {
   const pad = (value) => String(value).padStart(2, '0');
   return `backup-ext_FolderPathMemo_${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.json`;
@@ -74,7 +83,7 @@ function render() {
   const visible = state.items
     .filter((item) => state.view === 'all' || (state.view === 'favorite' && item.favorite) || (state.view === 'history' && item.lastOpenedAt))
     .filter((item) => !state.tag || item.tags.includes(state.tag))
-    .filter((item) => fuzzyMatch([item.name, item.memo ?? '', item.path, ...item.tags].join(' '), state.query))
+    .filter((item) => fuzzyMatch([item.name, item.memo ?? '', item.path, ...item.tags, fileSearchText(item)].join(' '), state.query))
     .sort((a, b) => state.view === 'history'
       ? b.lastOpenedAt - a.lastOpenedAt
       : Number(b.favorite) - Number(a.favorite) || b.updatedAt - a.updatedAt);
@@ -97,6 +106,7 @@ function createCard(item) {
   card.querySelector('h3').textContent = item.name;
   card.querySelector('.path-value').textContent = item.path;
   card.querySelector('.path-memo').textContent = item.memo ?? '';
+  card.querySelector('.path-main').append(createFileList(item));
   const favorite = card.querySelector('.favorite-button');
   favorite.classList.toggle('active', item.favorite);
   card.querySelector('.card-tags').replaceChildren(...item.tags.slice(0, 3).map((tag) => { const el = document.createElement('span'); el.textContent = tag; return el; }));
@@ -104,7 +114,7 @@ function createCard(item) {
   const copy = async () => { await navigator.clipboard.writeText(item.path); showToast('パスをコピーしました'); };
   card.querySelector('.copy-button').onclick = copy;
   card.querySelector('.path-value').onclick = copy;
-  card.querySelector('.open-button').onclick = () => openFolder(item);
+  card.querySelector('.open-button').onclick = (event) => { event.stopPropagation(); openFolder(item); };
   card.querySelector('.more-button').onclick = (event) => { event.stopPropagation(); card.querySelector('.card-menu').classList.toggle('open'); };
   card.querySelector('.edit-button').onclick = () => openEditor(item);
   card.querySelector('.delete-button').onclick = async () => {
@@ -113,8 +123,7 @@ function createCard(item) {
   };
   card.onclick = (event) => {
     if (event.target.closest('button, .card-menu')) return;
-    clearTimeout(card.openTimer);
-    card.openTimer = setTimeout(() => openFolder(item), 400);
+    card.classList.toggle('show-files');
   };
   card.ondblclick = (event) => {
     if (event.target.closest('button, .card-menu')) return;
@@ -123,7 +132,7 @@ function createCard(item) {
     openEditor(item);
   };
   card.onkeydown = (event) => {
-    if (event.key === 'Enter') openFolder(item);
+    if (event.key === 'Enter') card.classList.toggle('show-files');
   };
   return card;
 }
@@ -154,6 +163,7 @@ function openEditor(item) {
   $('#memoInput').value = item?.memo ?? '';
   $('#tagsInput').value = item?.tags.join(', ') ?? '';
   $('#favoriteInput').checked = item?.favorite ?? false;
+  renderFileRows(item?.files);
   syncNameFromPath();
   dialog.showModal();
   (item ? $('#nameInput') : $('#pathInput')).focus();
@@ -169,13 +179,13 @@ $('#pathForm').addEventListener('submit', async (event) => {
     id: id || crypto.randomUUID(), name: $('#nameInput').value.trim() || derivedName, path,
     memo: $('#memoInput').value.trim(),
     tags: [...new Set($('#tagsInput').value.split(',').map((tag) => tag.trim()).filter(Boolean))],
-    favorite: $('#favoriteInput').checked, updatedAt: Date.now()
+    favorite: $('#favoriteInput').checked, files: readFileRows(), updatedAt: Date.now()
   };
   if (existing) Object.assign(existing, item); else state.items.push(item);
   await persist(); dialog.close(); render(); showToast(existing ? '更新しました' : '登録しました');
 });
 
-$('#addButton').onclick = () => openEditor();
+$('#addButton').onclick = () => openEditor(); $('#addFileButton').onclick = () => addFileRow();
 $('#nameInput').oninput = () => { nameAutoFill = $('#nameInput').value.trim() === deriveFolderName($('#pathInput').value); };
 $('#pathInput').oninput = syncNameFromPath;
 $('#libraryButton').onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL('library.html') });
@@ -203,7 +213,7 @@ $('#importInput').onchange = async (event) => {
   try {
     const data = JSON.parse(await event.target.files[0].text());
     if (!Array.isArray(data.items) || data.items.some((item) => typeof item.name !== 'string' || typeof item.path !== 'string')) throw new Error('invalid');
-    state.items = data.items.map((item) => ({ id: item.id || crypto.randomUUID(), name: item.name, path: item.path, memo: typeof item.memo === 'string' ? item.memo : '', tags: Array.isArray(item.tags) ? item.tags : [], favorite: Boolean(item.favorite), updatedAt: Number(item.updatedAt) || Date.now(), lastOpenedAt: Number(item.lastOpenedAt) || 0, openCount: Number(item.openCount) || 0 }));
+    state.items = data.items.map((item) => ({ id: item.id || crypto.randomUUID(), name: item.name, path: item.path, memo: typeof item.memo === 'string' ? item.memo : '', tags: Array.isArray(item.tags) ? item.tags : [], favorite: Boolean(item.favorite), updatedAt: Number(item.updatedAt) || Date.now(), files: normalizeFiles(item.files), lastOpenedAt: Number(item.lastOpenedAt) || 0, openCount: Number(item.openCount) || 0 }));
     await persist(); render(); showToast(`${state.items.length}件を復元しました`);
   } catch { showToast('バックアップファイルを読み込めませんでした'); }
   event.target.value = '';
