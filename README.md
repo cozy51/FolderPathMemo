@@ -21,9 +21,15 @@ Google Chrome 向けの、フォルダーパスを素早く見つけて再利用
 ## Chrome へのインストール
 
 1. Chrome で `chrome://extensions` を開きます。
-2. **開発者モード**を有効にします。
-3. **展開して読み込み**を選び、このリポジトリのフォルダーを指定します。
-4. ツールバーの「FolderPath Memo」を開きます。
+2. アイコンPNGを生成します。
+
+   ```bash
+   python3 scripts/generate_icons.py
+   ```
+
+3. **開発者モード**を有効にします。
+4. **展開して読み込み**を選び、このリポジトリのフォルダーを指定します。
+5. ツールバーの「FolderPath Memo」を開きます。
 
 ネイティブホストのインストール完了メッセージはExplorer連携の準備完了を示すものであり、ポップアップを自動起動するものではありません。インストール後はChromeを完全に再起動し、`chrome://extensions`で再読み込みしてからツールバーのアイコンをクリックします。アイコンが見えない場合は、拡張機能メニュー（パズルのアイコン）でFolderPath Memoをツールバーへ固定してください。
 
@@ -40,13 +46,17 @@ FolderPathMemo\
 ├─ popup.html
 ├─ popup.js
 ├─ styles.css
-├─ icons\icon.svg
+├─ icons\icon16.png
+├─ icons\icon32.png
+├─ icons\icon48.png
+├─ icons\icon128.png
+├─ scripts\generate_icons.py
 └─ native-host\
    ├─ FolderPathNativeHost.cs
    └─ install.ps1
 ```
 
-上段の6ファイルは拡張機能の起動に必要です。`native-host`内の2ファイルはExplorer連携のインストール・診断に必要です。
+上段のファイルは拡張機能の起動に必要です。アイコンPNGは`scripts/generate_icons.py`で生成・再生成します。PNGは生成物のためGitには含めず、`manifest.json`は生成後の保存先を参照します。`native-host`内の2ファイルはExplorer連携のインストール・診断に必要です。
 
 ## エクスプローラー連携のセットアップ（Windows）
 
