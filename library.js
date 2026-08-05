@@ -14,6 +14,12 @@ function showToast(message) { const toast = $('#toast'); toast.textContent = mes
 async function persist() { await chrome.storage.local.set({ folderPaths: state.items }); updateBackupCount(); }
 function makeSignatures() { return Object.fromEntries(state.items.map((item) => [item.id, JSON.stringify(item)])); }
 function updateBackupCount() { const current = makeSignatures(); const ids = new Set([...Object.keys(current), ...Object.keys(state.backupSignatures)]); const count = [...ids].filter((id) => current[id] !== state.backupSignatures[id]).length; const badge = $('#backupChangeCount'); badge.textContent = count; badge.classList.toggle('clean', count === 0); badge.title = `前回バックアップから ${count} 件変更`; }
+function normalizeFiles(files) { return Array.isArray(files) ? files.map((file) => ({ name: String(file.name ?? '').trim(), memo: String(file.memo ?? '').trim() })).filter((file) => file.name || file.memo) : []; }
+function fileSearchText(item) { return normalizeFiles(item.files).flatMap((file) => [file.name, file.memo]).join(' '); }
+function readFileRows() { return [...document.querySelectorAll('#fileRows .file-row')].map((row) => ({ name: row.querySelector('.file-name-input').value.trim(), memo: row.querySelector('.file-memo-input').value.trim() })).filter((file) => file.name || file.memo); }
+function addFileRow(file = {}) { const row = document.createElement('div'); row.className = 'file-row'; row.innerHTML = '<input class="file-name-input" maxlength="160" placeholder="ファイル名" /><input class="file-memo-input" maxlength="240" placeholder="ファイルメモ" /><button class="remove-file-button" type="button" aria-label="ファイル行を削除">×</button>'; row.querySelector('.file-name-input').value = file.name ?? ''; row.querySelector('.file-memo-input').value = file.memo ?? ''; row.querySelector('.remove-file-button').onclick = () => row.remove(); $('#fileRows').append(row); }
+function renderFileRows(files = []) { $('#fileRows').replaceChildren(); const normalized = normalizeFiles(files); (normalized.length ? normalized : [{}]).forEach(addFileRow); }
+function createFileList(item) { const files = normalizeFiles(item.files); const wrap = document.createElement('div'); wrap.className = 'folder-file-list'; if (!files.length) { wrap.innerHTML = '<p class="file-list-empty">登録されたファイルはありません。編集画面からファイルリストを追加できます。</p>'; return wrap; } files.forEach((file) => { const button = document.createElement('button'); button.type = 'button'; button.className = 'file-list-item'; const name = document.createElement('span'); name.className = 'file-list-name'; name.textContent = file.name || '（ファイル名なし）'; const memo = document.createElement('span'); memo.className = 'file-list-memo'; memo.textContent = file.memo; button.append(name, memo); button.onclick = async (event) => { event.stopPropagation(); await navigator.clipboard.writeText(file.name); showToast('ファイル名をコピーしました'); }; wrap.append(button); }); return wrap; }
 function backupFilename(now = new Date()) { const pad = (value) => String(value).padStart(2, '0'); return `backup-ext_FolderPathMemo_${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.json`; }
 
 async function openFolder(item) {
@@ -29,6 +35,7 @@ function openEditor(item) {
   nameAutoFill = !item;
   $('#itemId').value = item?.id ?? ''; $('#nameInput').value = item?.name ?? ''; $('#pathInput').value = item?.path ?? '';
   $('#memoInput').value = item?.memo ?? ''; $('#tagsInput').value = item?.tags?.join(', ') ?? ''; $('#favoriteInput').checked = item?.favorite ?? false;
+  renderFileRows(item?.files);
   syncNameFromPath();
   dialog.showModal(); (item ? $('#nameInput') : $('#pathInput')).focus();
 }
@@ -40,11 +47,11 @@ function render() {
   $('#allCount').textContent = state.items.length; $('#favoriteCount').textContent = state.items.filter((item) => item.favorite).length; $('#historyCount').textContent = state.items.filter((item) => item.lastOpenedAt).length;
   const visible = state.items.filter((item) => state.view === 'all' || (state.view === 'favorite' && item.favorite) || (state.view === 'history' && item.lastOpenedAt))
     .filter((item) => !state.tag || item.tags?.includes(state.tag))
-    .filter((item) => fuzzyMatch([item.name, item.memo ?? '', item.path, ...(item.tags ?? [])].join(' '), state.query))
+    .filter((item) => fuzzyMatch([item.name, item.memo ?? '', item.path, ...(item.tags ?? []), fileSearchText(item)].join(' '), state.query))
     .sort((a, b) => state.view === 'history' ? b.lastOpenedAt - a.lastOpenedAt : Number(b.favorite) - Number(a.favorite) || a.name.localeCompare(b.name, 'ja'));
   $('#tableBody').replaceChildren(); $('#emptyState').hidden = visible.length > 0;
   visible.forEach((item) => {
-    const row = document.createElement('tr'); row.tabIndex = 0; row.title = 'クリックで開く・ダブルクリックで編集';
+    const row = document.createElement('tr'); row.tabIndex = 0; row.title = 'クリックでファイルリスト表示・ダブルクリックで編集';
     const star = cell('star', item.favorite ? '★' : '☆'); star.onclick = async (event) => { event.stopPropagation(); item.favorite = !item.favorite; item.updatedAt = Date.now(); await persist(); render(); }; row.append(star);
     const info = cell('info'); const name = document.createElement('div'); name.className = 'folder-name'; name.textContent = item.name; info.append(name);
     if (item.memo) { const memo = document.createElement('div'); memo.className = 'memo'; memo.textContent = item.memo; info.append(memo); } row.append(info);
@@ -56,23 +63,24 @@ function render() {
     const edit = document.createElement('button'); edit.className = 'edit'; edit.textContent = '編集'; edit.onclick = (event) => { event.stopPropagation(); openEditor(item); };
     const remove = document.createElement('button'); remove.className = 'delete'; remove.textContent = '削除'; remove.onclick = async (event) => { event.stopPropagation(); if (!confirm(`「${item.name}」を削除しますか？`)) return; state.items = state.items.filter(({ id }) => id !== item.id); await persist(); render(); showToast('削除しました'); };
     actions.append(copy, open, edit, remove); row.append(actions);
-    row.onclick = (event) => { if (event.target.closest('button')) return; clearTimeout(row.openTimer); row.openTimer = setTimeout(() => openFolder(item), 400); };
+    row.onclick = (event) => { if (event.target.closest('button')) return; row.classList.toggle('show-files'); };
+    const fileRow = document.createElement('tr'); fileRow.className = 'file-list-row'; const fileCell = document.createElement('td'); fileCell.colSpan = 5; fileCell.append(createFileList(item)); fileRow.append(fileCell);
     row.ondblclick = (event) => { if (event.target.closest('button')) return; event.preventDefault(); clearTimeout(row.openTimer); openEditor(item); };
-    row.onkeydown = (event) => { if (event.key === 'Enter') openFolder(item); }; $('#tableBody').append(row);
+    row.onkeydown = (event) => { if (event.key === 'Enter') row.classList.toggle('show-files'); }; $('#tableBody').append(row, fileRow);
   });
 }
 
 $('#pathForm').onsubmit = async (event) => {
   event.preventDefault(); const id = $('#itemId').value; const existing = state.items.find((item) => item.id === id); const path = $('#pathInput').value.trim(); const derivedName = deriveFolderName(path);
-  const item = { id: id || crypto.randomUUID(), name: $('#nameInput').value.trim() || derivedName, path, memo: $('#memoInput').value.trim(), tags: [...new Set($('#tagsInput').value.split(',').map((tag) => tag.trim()).filter(Boolean))], favorite: $('#favoriteInput').checked, updatedAt: Date.now(), lastOpenedAt: existing?.lastOpenedAt ?? 0, openCount: existing?.openCount ?? 0 };
+  const item = { id: id || crypto.randomUUID(), name: $('#nameInput').value.trim() || derivedName, path, memo: $('#memoInput').value.trim(), tags: [...new Set($('#tagsInput').value.split(',').map((tag) => tag.trim()).filter(Boolean))], favorite: $('#favoriteInput').checked, files: readFileRows(), updatedAt: Date.now(), lastOpenedAt: existing?.lastOpenedAt ?? 0, openCount: existing?.openCount ?? 0 };
   if (existing) Object.assign(existing, item); else state.items.push(item); await persist(); dialog.close(); render(); showToast(existing ? '更新しました' : '登録しました');
 };
-$('#addButton').onclick = () => openEditor(); $('#nameInput').oninput = () => { nameAutoFill = $('#nameInput').value.trim() === deriveFolderName($('#pathInput').value); }; $('#pathInput').oninput = syncNameFromPath; $('#closeDialog').onclick = $('#cancelButton').onclick = () => dialog.close();
+$('#addButton').onclick = () => openEditor(); $('#addFileButton').onclick = () => addFileRow(); $('#nameInput').oninput = () => { nameAutoFill = $('#nameInput').value.trim() === deriveFolderName($('#pathInput').value); }; $('#pathInput').oninput = syncNameFromPath; $('#closeDialog').onclick = $('#cancelButton').onclick = () => dialog.close();
 $('#searchInput').oninput = (event) => { state.query = event.target.value; render(); };
 document.querySelectorAll('.view-tab').forEach((button) => button.onclick = () => { state.view = button.dataset.view; document.querySelectorAll('.view-tab').forEach((tab) => tab.classList.toggle('active', tab === button)); render(); });
 $('#exportButton').onclick = async () => { const blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), items: state.items }, null, 2)], { type: 'application/json' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = backupFilename(); link.click(); URL.revokeObjectURL(link.href); state.backupSignatures = makeSignatures(); await chrome.storage.local.set({ folderPathBackupState: state.backupSignatures }); updateBackupCount(); showToast('バックアップを作成しました'); };
 $('#importButton').onclick = () => $('#importInput').click();
-$('#importInput').onchange = async (event) => { try { const data = JSON.parse(await event.target.files[0].text()); if (!Array.isArray(data.items) || data.items.some((item) => typeof item.name !== 'string' || typeof item.path !== 'string')) throw new Error(); state.items = data.items.map((item) => ({ id: item.id || crypto.randomUUID(), name: item.name, path: item.path, memo: typeof item.memo === 'string' ? item.memo : '', tags: Array.isArray(item.tags) ? item.tags : [], favorite: Boolean(item.favorite), updatedAt: Number(item.updatedAt) || Date.now(), lastOpenedAt: Number(item.lastOpenedAt) || 0, openCount: Number(item.openCount) || 0 })); await persist(); render(); showToast(`${state.items.length}件を復元しました`); } catch { showToast('バックアップを読み込めませんでした'); } event.target.value = ''; };
+$('#importInput').onchange = async (event) => { try { const data = JSON.parse(await event.target.files[0].text()); if (!Array.isArray(data.items) || data.items.some((item) => typeof item.name !== 'string' || typeof item.path !== 'string')) throw new Error(); state.items = data.items.map((item) => ({ id: item.id || crypto.randomUUID(), name: item.name, path: item.path, memo: typeof item.memo === 'string' ? item.memo : '', tags: Array.isArray(item.tags) ? item.tags : [], favorite: Boolean(item.favorite), updatedAt: Number(item.updatedAt) || Date.now(), files: normalizeFiles(item.files), lastOpenedAt: Number(item.lastOpenedAt) || 0, openCount: Number(item.openCount) || 0 })); await persist(); render(); showToast(`${state.items.length}件を復元しました`); } catch { showToast('バックアップを読み込めませんでした'); } event.target.value = ''; };
 (async () => { const saved = await chrome.storage.local.get(['folderPaths', 'folderPathBackupState']); state.items = Array.isArray(saved.folderPaths) ? saved.folderPaths : []; state.backupSignatures = saved.folderPathBackupState && typeof saved.folderPathBackupState === 'object' ? saved.folderPathBackupState : {}; render(); updateBackupCount(); })();
 
 $('#appVersion').textContent = `v${chrome.runtime.getManifest().version}`;
