@@ -13,7 +13,7 @@
           <div class="brand-mark" aria-hidden="true">
             <img src="icons/icon.svg" alt="" />
           </div>
-          <div><h1>FolderPath</h1><p>大切な場所へ、すぐに。</p></div>
+          <div><h1>FolderPath Memo</h1><p>大切な場所へ、すぐに。</p></div>
         </div>
         <div class="header-actions">
           <button id="libraryButton" class="library-button" type="button"><span>▤</span> 一覧表示</button>
@@ -43,15 +43,16 @@
 
       <section id="list" class="path-list" aria-live="polite"></section>
 
-      <footer><span id="statusText">クリックで開く・ダブルクリックで編集</span><span>FolderPath Memo v1.3.3</span></footer>
+      <footer><span id="statusText">クリックで開く・ダブルクリックで編集</span><span>FolderPath Memo v1.3.6</span></footer>
     </main>
 
     <dialog id="pathDialog">
       <form id="pathForm" method="dialog">
         <div class="dialog-header"><div><p class="eyebrow">FOLDER DETAILS</p><h2 id="dialogTitle">フォルダーを登録</h2></div><button id="closeDialog" class="icon-button" type="button" aria-label="閉じる">×</button></div>
         <input id="itemId" type="hidden" />
-        <label>フォルダ名 <small>パス入力で自動入力</small><input id="nameInput" maxlength="80" placeholder="例：プロジェクト資料" /></label>
         <label>フォルダーパス <span>必須</span><input id="pathInput" required maxlength="500" placeholder="例：C:\Users\me\Documents" /></label>
+        <label>フォルダ名 <small class="auto-label">自動入力</small><input id="nameInput" maxlength="80" placeholder="パスから自動入力されます" /></label>
+        <p class="auto-name-hint">フォルダーパスを入力すると、最後のフォルダ名を自動で入れます。必要な場合だけ手入力で変更できます。</p>
         <label>メモ <small>用途などを自由に記入</small><textarea id="memoInput" maxlength="300" rows="3" placeholder="例：月次報告書と関連資料の保存先"></textarea></label>
         <label>タグ <small>カンマ区切り</small><input id="tagsInput" maxlength="200" placeholder="例：仕事, 重要" /></label>
         <label class="favorite-check"><input id="favoriteInput" type="checkbox" /> <span>★ お気に入りに追加</span></label>
