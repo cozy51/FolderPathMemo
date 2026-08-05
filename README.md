@@ -40,13 +40,26 @@ FolderPathMemo\
 ├─ popup.html
 ├─ popup.js
 ├─ styles.css
-├─ icons\icon.svg
+├─ icons\
+│  ├─ icon.svg          （48px・128px用のマスター）
+│  ├─ icon-small.svg    （16px・32px用の簡略版マスター）
+│  └─ icon16/32/48/128.png
+├─ tools\build-icons.py （SVGからPNGを再生成するスクリプト）
 └─ native-host\
    ├─ FolderPathNativeHost.cs
    └─ install.ps1
 ```
 
-上段の6ファイルは拡張機能の起動に必要です。`native-host`内の2ファイルはExplorer連携のインストール・診断に必要です。
+上段の5ファイルと`icons`内のPNGは拡張機能の起動に必要です。`native-host`内の2ファイルはExplorer連携のインストール・診断に必要です。
+
+### アイコンを作り直す
+
+デザインを変えたいときは`icons\icon.svg`（および小サイズ用の`icons\icon-small.svg`）を編集し、次のコマンドでPNGを再生成します。16pxと32pxは細部がつぶれるため、フォルダーの形だけを残した簡略版から生成しています。
+
+```bash
+pip install cairosvg pillow
+python tools/build-icons.py
+```
 
 ## エクスプローラー連携のセットアップ（Windows）
 
