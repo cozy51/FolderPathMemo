@@ -1,4 +1,4 @@
-const state = { items: [], query: '', view: 'all', tag: '', backupSignatures: {} };
+const state = { items: [], query: '', view: 'all', tag: '', sort: 'registered-desc', backupSignatures: {} };
 const $ = (selector) => document.querySelector(selector);
 const dialog = $('#pathDialog');
 let nameAutoFill = true;
@@ -43,6 +43,13 @@ function openEditor(item) {
   dialog.showModal(); (item ? $('#nameInput') : $('#pathInput')).focus();
 }
 function cell(className, text = '') { const element = document.createElement('td'); element.className = className; element.textContent = text; return element; }
+function registeredAt(item) { return Number(item.createdAt) || Number(item.updatedAt) || 0; }
+function compareItems(a, b) {
+  if (state.view === 'history') return b.lastOpenedAt - a.lastOpenedAt;
+  if (state.sort === 'path-asc') return a.path.localeCompare(b.path, 'ja', { numeric: true, sensitivity: 'base' }) || registeredAt(b) - registeredAt(a);
+  if (state.sort === 'name-asc') return a.name.localeCompare(b.name, 'ja', { numeric: true, sensitivity: 'base' }) || registeredAt(b) - registeredAt(a);
+  return registeredAt(b) - registeredAt(a) || a.name.localeCompare(b.name, 'ja');
+}
 
 function render() {
   const allTags = [...new Set(state.items.flatMap((item) => item.tags ?? []))].sort((a, b) => a.localeCompare(b, 'ja'));
@@ -51,14 +58,14 @@ function render() {
   const visible = state.items.filter((item) => state.view === 'all' || (state.view === 'favorite' && item.favorite) || (state.view === 'history' && item.lastOpenedAt))
     .filter((item) => !state.tag || item.tags?.includes(state.tag))
     .filter((item) => fuzzyMatch([item.name, item.memo ?? '', item.path, ...(item.tags ?? []), fileSearchText(item)].join(' '), state.query))
-    .sort((a, b) => state.view === 'history' ? b.lastOpenedAt - a.lastOpenedAt : Number(b.favorite) - Number(a.favorite) || a.name.localeCompare(b.name, 'ja'));
+    .sort(compareItems);
   $('#tableBody').replaceChildren(); $('#emptyState').hidden = visible.length > 0;
   visible.forEach((item) => {
     const row = document.createElement('tr'); row.tabIndex = 0; row.title = 'クリックでファイルリスト表示・ダブルクリックで編集';
     const star = cell('star', item.favorite ? '★' : '☆'); star.onclick = async (event) => { event.stopPropagation(); item.favorite = !item.favorite; item.updatedAt = Date.now(); await persist(); render(); }; row.append(star);
     const info = cell('info'); const name = document.createElement('div'); name.className = 'folder-name'; name.textContent = item.name; info.append(name);
     if (item.memo) { const memo = document.createElement('div'); memo.className = 'memo'; memo.textContent = item.memo; info.append(memo); } row.append(info);
-    const tags = cell('tags'); (item.tags ?? []).forEach((tag) => { const badge = document.createElement('span'); badge.className = 'tag'; badge.textContent = tag; tags.append(badge); }); row.append(tags);
+    const tags = cell('tags'); (item.tags ?? []).forEach((tag) => { const badge = document.createElement('button'); badge.type = 'button'; badge.className = `tag${state.tag === tag ? ' active' : ''}`; badge.textContent = tag; badge.title = `「${tag}」で絞り込む`; badge.onclick = (event) => { event.stopPropagation(); state.tag = state.tag === tag ? '' : tag; render(); }; tags.append(badge); }); row.append(tags);
     row.append(cell('path', item.path));
     const actions = cell('actions');
     const copy = document.createElement('button'); copy.textContent = 'コピー'; copy.onclick = async (event) => { event.stopPropagation(); await navigator.clipboard.writeText(item.path); showToast('コピーしました'); };
@@ -75,15 +82,17 @@ function render() {
 
 $('#pathForm').onsubmit = async (event) => {
   event.preventDefault(); const id = $('#itemId').value; const existing = state.items.find((item) => item.id === id); const path = $('#pathInput').value.trim(); const derivedName = deriveFolderName(path);
-  const item = { id: id || crypto.randomUUID(), name: $('#nameInput').value.trim() || derivedName, path, memo: $('#memoInput').value.trim(), tags: [...new Set($('#tagsInput').value.split(',').map((tag) => tag.trim()).filter(Boolean))], favorite: $('#favoriteInput').checked, files: readFileRows(), updatedAt: Date.now(), lastOpenedAt: existing?.lastOpenedAt ?? 0, openCount: existing?.openCount ?? 0 };
+  const now = Date.now();
+  const item = { id: id || crypto.randomUUID(), name: $('#nameInput').value.trim() || derivedName, path, memo: $('#memoInput').value.trim(), tags: [...new Set($('#tagsInput').value.split(',').map((tag) => tag.trim()).filter(Boolean))], favorite: $('#favoriteInput').checked, files: readFileRows(), createdAt: existing?.createdAt ?? existing?.updatedAt ?? now, updatedAt: now, lastOpenedAt: existing?.lastOpenedAt ?? 0, openCount: existing?.openCount ?? 0 };
   if (existing) Object.assign(existing, item); else state.items.push(item); await persist(); dialog.close(); render(); showToast(existing ? '更新しました' : '登録しました');
 };
 $('#addButton').onclick = () => openEditor(); $('#addFileButton').onclick = () => addFileRow(); $('#nameInput').oninput = () => { nameAutoFill = $('#nameInput').value.trim() === deriveFolderName($('#pathInput').value); }; $('#pathInput').oninput = syncNameFromPath; $('#closeDialog').onclick = $('#cancelButton').onclick = () => dialog.close();
 $('#searchInput').oninput = (event) => { state.query = event.target.value; render(); };
+$('#sortSelect').onchange = (event) => { state.sort = event.target.value; render(); };
 document.querySelectorAll('.view-tab').forEach((button) => button.onclick = () => { state.view = button.dataset.view; document.querySelectorAll('.view-tab').forEach((tab) => tab.classList.toggle('active', tab === button)); render(); });
 $('#exportButton').onclick = async () => { const blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), items: state.items }, null, 2)], { type: 'application/json' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = backupFilename(); link.click(); URL.revokeObjectURL(link.href); state.backupSignatures = makeSignatures(); await chrome.storage.local.set({ folderPathBackupState: state.backupSignatures }); updateBackupCount(); showToast('バックアップを作成しました'); };
 $('#importButton').onclick = () => $('#importInput').click();
-$('#importInput').onchange = async (event) => { try { const data = JSON.parse(await event.target.files[0].text()); if (!Array.isArray(data.items) || data.items.some((item) => typeof item.name !== 'string' || typeof item.path !== 'string')) throw new Error(); state.items = data.items.map((item) => ({ id: item.id || crypto.randomUUID(), name: item.name, path: item.path, memo: typeof item.memo === 'string' ? item.memo : '', tags: Array.isArray(item.tags) ? item.tags : [], favorite: Boolean(item.favorite), updatedAt: Number(item.updatedAt) || Date.now(), files: normalizeFiles(item.files), lastOpenedAt: Number(item.lastOpenedAt) || 0, openCount: Number(item.openCount) || 0 })); await persist(); render(); showToast(`${state.items.length}件を復元しました`); } catch { showToast('バックアップを読み込めませんでした'); } event.target.value = ''; };
+$('#importInput').onchange = async (event) => { try { const data = JSON.parse(await event.target.files[0].text()); if (!Array.isArray(data.items) || data.items.some((item) => typeof item.name !== 'string' || typeof item.path !== 'string')) throw new Error(); state.items = data.items.map((item) => { const updatedAt = Number(item.updatedAt) || Date.now(); return { id: item.id || crypto.randomUUID(), name: item.name, path: item.path, memo: typeof item.memo === 'string' ? item.memo : '', tags: Array.isArray(item.tags) ? item.tags : [], favorite: Boolean(item.favorite), createdAt: Number(item.createdAt) || updatedAt, updatedAt, files: normalizeFiles(item.files), lastOpenedAt: Number(item.lastOpenedAt) || 0, openCount: Number(item.openCount) || 0 }; }); await persist(); render(); showToast(`${state.items.length}件を復元しました`); } catch { showToast('バックアップを読み込めませんでした'); } event.target.value = ''; };
 (async () => { const saved = await chrome.storage.local.get(['folderPaths', 'folderPathBackupState']); state.items = Array.isArray(saved.folderPaths) ? saved.folderPaths : []; state.backupSignatures = saved.folderPathBackupState && typeof saved.folderPathBackupState === 'object' ? saved.folderPathBackupState : {}; render(); updateBackupCount(); })();
 
 $('#appVersion').textContent = `v${chrome.runtime.getManifest().version}`;

@@ -109,7 +109,7 @@ function createCard(item) {
   card.querySelector('.path-main').append(createFileList(item));
   const favorite = card.querySelector('.favorite-button');
   favorite.classList.toggle('active', item.favorite);
-  card.querySelector('.card-tags').replaceChildren(...item.tags.slice(0, 3).map((tag) => { const el = document.createElement('span'); el.textContent = tag; return el; }));
+  card.querySelector('.card-tags').replaceChildren(...item.tags.slice(0, 3).map((tag) => { const el = document.createElement('button'); el.type = 'button'; el.classList.toggle('active', state.tag === tag); el.textContent = tag; el.title = `「${tag}」で絞り込む`; el.onclick = (event) => { event.stopPropagation(); state.tag = state.tag === tag ? '' : tag; render(); }; return el; }));
   favorite.onclick = async () => { item.favorite = !item.favorite; item.updatedAt = Date.now(); await persist(); render(); };
   const copy = async () => { await navigator.clipboard.writeText(item.path); showToast('パスをコピーしました'); };
   card.querySelector('.copy-button').onclick = copy;
@@ -175,11 +175,12 @@ $('#pathForm').addEventListener('submit', async (event) => {
   const existing = state.items.find((item) => item.id === id);
   const path = $('#pathInput').value.trim();
   const derivedName = deriveFolderName(path);
+  const now = Date.now();
   const item = {
     id: id || crypto.randomUUID(), name: $('#nameInput').value.trim() || derivedName, path,
     memo: $('#memoInput').value.trim(),
     tags: [...new Set($('#tagsInput').value.split(',').map((tag) => tag.trim()).filter(Boolean))],
-    favorite: $('#favoriteInput').checked, files: readFileRows(), updatedAt: Date.now()
+    favorite: $('#favoriteInput').checked, files: readFileRows(), createdAt: existing?.createdAt ?? existing?.updatedAt ?? now, updatedAt: now
   };
   if (existing) Object.assign(existing, item); else state.items.push(item);
   await persist(); dialog.close(); render(); showToast(existing ? '更新しました' : '登録しました');
@@ -213,7 +214,7 @@ $('#importInput').onchange = async (event) => {
   try {
     const data = JSON.parse(await event.target.files[0].text());
     if (!Array.isArray(data.items) || data.items.some((item) => typeof item.name !== 'string' || typeof item.path !== 'string')) throw new Error('invalid');
-    state.items = data.items.map((item) => ({ id: item.id || crypto.randomUUID(), name: item.name, path: item.path, memo: typeof item.memo === 'string' ? item.memo : '', tags: Array.isArray(item.tags) ? item.tags : [], favorite: Boolean(item.favorite), updatedAt: Number(item.updatedAt) || Date.now(), files: normalizeFiles(item.files), lastOpenedAt: Number(item.lastOpenedAt) || 0, openCount: Number(item.openCount) || 0 }));
+    state.items = data.items.map((item) => { const updatedAt = Number(item.updatedAt) || Date.now(); return { id: item.id || crypto.randomUUID(), name: item.name, path: item.path, memo: typeof item.memo === 'string' ? item.memo : '', tags: Array.isArray(item.tags) ? item.tags : [], favorite: Boolean(item.favorite), createdAt: Number(item.createdAt) || updatedAt, updatedAt, files: normalizeFiles(item.files), lastOpenedAt: Number(item.lastOpenedAt) || 0, openCount: Number(item.openCount) || 0 }; });
     await persist(); render(); showToast(`${state.items.length}件を復元しました`);
   } catch { showToast('バックアップファイルを読み込めませんでした'); }
   event.target.value = '';
