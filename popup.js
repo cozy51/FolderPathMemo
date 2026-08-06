@@ -152,7 +152,7 @@ function createCard(item) {
   const fileTotal = normalizeFiles(item.files).length; if (fileTotal > 0) { const fileCount = document.createElement('span'); fileCount.className = 'file-count-badge compact'; fileCount.textContent = `${fileTotal}件`; fileCount.title = `登録ファイル数：${fileTotal}件`; fileCount.setAttribute('aria-label', `登録ファイル数 ${fileTotal}件`); card.querySelector('.path-title-row').insertBefore(fileCount, card.querySelector('.card-tags')); }
   card.querySelector('.path-value').textContent = item.path;
   card.querySelector('.path-memo').textContent = item.memo ?? '';
-  card.querySelector('.path-main').append(createFileList(item));
+  if (fileTotal > 0) card.querySelector('.path-main').append(createFileList(item));
   const favorite = card.querySelector('.favorite-button');
   favorite.classList.toggle('active', item.favorite);
   card.querySelector('.card-tags').replaceChildren(...item.tags.slice(0, 3).map((tag) => { const el = document.createElement('button'); el.type = 'button'; el.classList.toggle('active', state.tag === tag); el.textContent = tag; decorateTag(el, tag); el.onclick = (event) => { event.stopPropagation(); state.tag = state.tag === tag ? '' : tag; render(); }; return el; }));
@@ -169,6 +169,7 @@ function createCard(item) {
   };
   card.onclick = (event) => {
     if (event.target.closest('button, .card-menu')) return;
+    if (fileTotal === 0) { showToast('ファイルは登録されていません'); return; }
     card.classList.toggle('show-files');
   };
   card.ondblclick = (event) => {
@@ -178,7 +179,9 @@ function createCard(item) {
     openEditor(item);
   };
   card.onkeydown = (event) => {
-    if (event.key === 'Enter') card.classList.toggle('show-files');
+    if (event.key !== 'Enter') return;
+    if (fileTotal === 0) { showToast('ファイルは登録されていません'); return; }
+    card.classList.toggle('show-files');
   };
   return card;
 }

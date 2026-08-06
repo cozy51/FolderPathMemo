@@ -104,7 +104,7 @@ function render() {
     .sort(compareItems);
   $('#tableBody').replaceChildren(); $('#emptyState').hidden = visible.length > 0;
   visible.forEach((item) => {
-    const row = document.createElement('tr'); row.tabIndex = 0; row.title = 'クリックでファイルリスト表示・ダブルクリックで編集';
+    const row = document.createElement('tr'); row.tabIndex = 0;
     const star = cell('star', item.favorite ? '★' : '☆'); star.onclick = async (event) => { event.stopPropagation(); item.favorite = !item.favorite; item.updatedAt = Date.now(); await persist(); render(); }; row.append(star);
     const info = cell('info'); const titleLine = document.createElement('div'); titleLine.className = 'folder-title-line'; const name = document.createElement('div'); name.className = 'folder-name'; name.textContent = item.name; titleLine.append(name); const fileTotal = normalizeFiles(item.files).length; if (fileTotal > 0) { const fileCount = document.createElement('span'); fileCount.className = 'file-count-badge'; fileCount.textContent = `ファイル ${fileTotal}件`; fileCount.title = `登録ファイル数：${fileTotal}件`; titleLine.append(fileCount); } info.append(titleLine);
     if (item.memo) { const memo = document.createElement('div'); memo.className = 'memo'; memo.textContent = item.memo; info.append(memo); } row.append(info);
@@ -116,10 +116,10 @@ function render() {
     const edit = document.createElement('button'); edit.className = 'edit'; edit.textContent = '編集'; edit.onclick = (event) => { event.stopPropagation(); openEditor(item); };
     const remove = document.createElement('button'); remove.className = 'delete'; remove.textContent = '削除'; remove.onclick = async (event) => { event.stopPropagation(); if (!confirm(`「${item.name}」を削除しますか？`)) return; state.items = state.items.filter(({ id }) => id !== item.id); await persist(); render(); showToast('削除しました'); };
     actions.append(copy, open, edit, remove); row.append(actions);
-    row.onclick = (event) => { if (event.target.closest('button')) return; row.classList.toggle('show-files'); };
-    const fileRow = document.createElement('tr'); fileRow.className = 'file-list-row'; const fileCell = document.createElement('td'); fileCell.colSpan = 5; fileCell.append(createFileList(item)); fileRow.append(fileCell);
+    row.title = fileTotal > 0 ? 'クリックでファイルリスト表示・ダブルクリックで編集' : 'ファイルは未登録です・ダブルクリックで編集';
+    row.onclick = (event) => { if (event.target.closest('button')) return; if (fileTotal === 0) { showToast('ファイルは登録されていません'); return; } row.classList.toggle('show-files'); };
     row.ondblclick = (event) => { if (event.target.closest('button')) return; event.preventDefault(); clearTimeout(row.openTimer); openEditor(item); };
-    row.onkeydown = (event) => { if (event.key === 'Enter') row.classList.toggle('show-files'); }; $('#tableBody').append(row, fileRow);
+    row.onkeydown = (event) => { if (event.key !== 'Enter') return; if (fileTotal === 0) { showToast('ファイルは登録されていません'); return; } row.classList.toggle('show-files'); }; $('#tableBody').append(row); if (fileTotal > 0) { const fileRow = document.createElement('tr'); fileRow.className = 'file-list-row'; const fileCell = document.createElement('td'); fileCell.colSpan = 5; fileCell.append(createFileList(item)); fileRow.append(fileCell); $('#tableBody').append(fileRow); }
   });
 }
 
