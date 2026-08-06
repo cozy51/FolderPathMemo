@@ -8,13 +8,14 @@
   </head>
   <body>
     <header>
-      <div class="brand"><img src="icons/icon.svg" alt="" /><div><h1>FolderPath Memo</h1><p>フォルダー一覧 <span id="appVersion" class="version-badge">v1.3.6</span></p></div></div>
+      <div class="brand"><img src="icons/icon.svg" alt="" /><div><h1>FolderPath Memo</h1><p>フォルダー一覧 <span id="appVersion" class="version-badge">v1.3.15</span></p></div></div>
       <div class="header-actions"><button id="importButton" class="ghost-button" type="button">インポート</button><div class="backup-control"><button id="exportButton" class="ghost-button" type="button">バックアップ</button><span id="backupChangeCount" class="change-badge" title="前回バックアップからの変更件数">0</span></div><button id="addButton" class="primary-button" type="button">＋ 新規登録</button><input id="importInput" type="file" accept="application/json,.json" hidden /></div>
     </header>
     <main>
       <section class="controls">
         <label class="search"><span>⌕</span><input id="searchInput" type="search" placeholder="フォルダ名・メモ・パス・タグを検索" autofocus /></label>
         <div class="view-tabs" role="tablist"><button class="view-tab active" data-view="all" type="button">すべて <span id="allCount">0</span></button><button class="view-tab" data-view="favorite" type="button">★ お気に入り <span id="favoriteCount">0</span></button><button class="view-tab" data-view="history" type="button">履歴 <span id="historyCount">0</span></button></div>
+        <label class="sort-control"><span>並び順</span><select id="sortSelect"><option value="registered-desc">登録日時（新しい順）</option><option value="path-asc">パス順</option><option value="name-asc">フォルダ名順</option></select></label>
       </section>
       <div id="tagFilters" class="tag-filters" aria-label="タグフィルター"></div>
       <div class="table-wrap">
@@ -33,7 +34,7 @@
         <label>フォルダ名 <small class="auto-label">自動入力</small><input id="nameInput" maxlength="80" placeholder="パスから自動入力されます" /></label>
         <p class="auto-name-hint">フォルダーパスを入力すると、最後のフォルダ名を自動で入れます。必要な場合だけ手入力で変更できます。</p>
         <label>メモ <small>用途などを自由に記入</small><textarea id="memoInput" maxlength="300" rows="3"></textarea></label>
-        <label>タグ <small>カンマ区切り</small><input id="tagsInput" maxlength="200" /></label>
+        <label>タグ <small>登録済みタグから選択</small><div id="tagChoices" class="tag-choices" aria-label="登録済みタグ"></div><input id="tagsInput" maxlength="200" placeholder="新規タグを入力（カンマ区切り）" /></label>
         <section class="file-list-editor" aria-label="ファイルリスト">
           <div class="file-list-editor-header"><span>ファイルリスト</span><small>ファイル名とメモを登録</small></div>
           <div class="file-row-header"><span>No</span><span>ファイル名</span><span>ファイルメモ</span><span></span></div>
@@ -42,6 +43,15 @@
         </section>
         <label class="favorite-check"><input id="favoriteInput" type="checkbox" /> ★ お気に入りに追加</label>
         <div class="dialog-actions"><button id="cancelButton" class="ghost-button" type="button">キャンセル</button><button class="primary-button" type="submit">保存する</button></div>
+      </form>
+    </dialog>
+    <dialog id="tagDialog" class="tag-dialog">
+      <form id="tagForm" method="dialog">
+        <div class="dialog-header"><div><p>TAG SETTINGS</p><h2>タグを編集</h2></div><button id="closeTagDialog" class="close-button" type="button">×</button></div>
+        <p class="tag-dialog-hint">漢字のタグには、並び替えに使うよみがなや頭文字を登録できます。タグ名を変更すると、登録済みフォルダーにも反映されます。</p>
+        <div class="tag-row-header"><span>タグ名</span><span>よみがな・頭文字</span><span>登録件数</span></div>
+        <div id="tagRows" class="tag-rows"></div>
+        <div class="dialog-actions"><button id="cancelTagButton" class="ghost-button" type="button">キャンセル</button><button class="primary-button" type="submit">保存する</button></div>
       </form>
     </dialog>
     <div id="toast" class="toast" role="status"></div>
