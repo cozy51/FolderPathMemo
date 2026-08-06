@@ -8,13 +8,14 @@
   </head>
   <body>
     <header>
-      <div class="brand"><img src="icons/icon.svg" alt="" /><div><h1>FolderPath Memo</h1><p>フォルダー一覧 <span id="appVersion" class="version-badge">v1.3.6</span></p></div></div>
+      <div class="brand"><img src="icons/icon.svg" alt="" /><div><h1>FolderPath Memo</h1><p>フォルダー一覧 <span id="appVersion" class="version-badge">v1.3.7</span></p></div></div>
       <div class="header-actions"><button id="importButton" class="ghost-button" type="button">インポート</button><div class="backup-control"><button id="exportButton" class="ghost-button" type="button">バックアップ</button><span id="backupChangeCount" class="change-badge" title="前回バックアップからの変更件数">0</span></div><button id="addButton" class="primary-button" type="button">＋ 新規登録</button><input id="importInput" type="file" accept="application/json,.json" hidden /></div>
     </header>
     <main>
       <section class="controls">
         <label class="search"><span>⌕</span><input id="searchInput" type="search" placeholder="フォルダ名・メモ・パス・タグを検索" autofocus /></label>
         <div class="view-tabs" role="tablist"><button class="view-tab active" data-view="all" type="button">すべて <span id="allCount">0</span></button><button class="view-tab" data-view="favorite" type="button">★ お気に入り <span id="favoriteCount">0</span></button><button class="view-tab" data-view="history" type="button">履歴 <span id="historyCount">0</span></button></div>
+        <label class="sort-control"><span>並び順</span><select id="sortSelect"><option value="registered-desc">登録日時（新しい順）</option><option value="path-asc">パス順</option><option value="name-asc">フォルダ名順</option></select></label>
       </section>
       <div id="tagFilters" class="tag-filters" aria-label="タグフィルター"></div>
       <div class="table-wrap">
