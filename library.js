@@ -1,4 +1,4 @@
-const state = { items: [], query: '', view: 'all', tag: '', sort: 'registered-desc', backupSignatures: {} };
+const state = { items: [], query: '', view: 'all', tag: '', sort: 'registered-desc', tagSortKeys: {}, backupSignatures: {} };
 const $ = (selector) => document.querySelector(selector);
 const dialog = $('#pathDialog');
 let nameAutoFill = true;
@@ -11,8 +11,8 @@ function fuzzyMatch(text, query) {
   return true;
 }
 function showToast(message) { const toast = $('#toast'); toast.textContent = message; toast.classList.add('show'); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.classList.remove('show'), 1600); }
-async function persist() { await chrome.storage.local.set({ folderPaths: state.items }); updateBackupCount(); }
-function makeSignatures() { return Object.fromEntries(state.items.map((item) => [item.id, JSON.stringify(item)])); }
+async function persist() { await chrome.storage.local.set({ folderPaths: state.items, folderPathTagSortKeys: state.tagSortKeys }); updateBackupCount(); }
+function makeSignatures() { const signatures = Object.fromEntries(state.items.map((item) => [item.id, JSON.stringify(item)])); if (Object.keys(state.tagSortKeys).length) signatures.__tagSortKeys = JSON.stringify(state.tagSortKeys); return signatures; }
 function updateBackupCount() { const current = makeSignatures(); const ids = new Set([...Object.keys(current), ...Object.keys(state.backupSignatures)]); const count = [...ids].filter((id) => current[id] !== state.backupSignatures[id]).length; const badge = $('#backupChangeCount'); badge.textContent = count; badge.classList.toggle('clean', count === 0); badge.title = `前回バックアップから ${count} 件変更`; }
 function normalizeFiles(files) { return Array.isArray(files) ? files.map((file) => ({ name: String(file.name ?? '').trim(), memo: String(file.memo ?? '').trim() })).filter((file) => file.name || file.memo) : []; }
 function fileSearchText(item) { return normalizeFiles(item.files).flatMap((file) => [file.name, file.memo]).join(' '); }
@@ -43,6 +43,18 @@ function openEditor(item) {
   dialog.showModal(); (item ? $('#nameInput') : $('#pathInput')).focus();
 }
 function cell(className, text = '') { const element = document.createElement('td'); element.className = className; element.textContent = text; return element; }
+function tagSortValue(tag) { return (state.tagSortKeys[tag] || tag).trim(); }
+function compareTags(a, b) { return tagSortValue(a).localeCompare(tagSortValue(b), 'ja', { numeric: true, sensitivity: 'base' }) || a.localeCompare(b, 'ja'); }
+function openTagEditor() {
+  const allTags = [...new Set(state.items.flatMap((item) => item.tags ?? []))].sort(compareTags);
+  $('#tagRows').replaceChildren(...allTags.map((tag) => {
+    const row = document.createElement('div'); row.className = 'tag-edit-row'; row.dataset.originalTag = tag;
+    const name = document.createElement('input'); name.className = 'tag-name-input'; name.value = tag; name.maxLength = 50; name.required = true;
+    const reading = document.createElement('input'); reading.className = 'tag-reading-input'; reading.value = state.tagSortKeys[tag] ?? ''; reading.maxLength = 80; reading.placeholder = '例：せいぞう / せ';
+    row.append(name, reading); return row;
+  }));
+  $('#tagDialog').showModal();
+}
 function registeredAt(item) { return Number(item.createdAt) || Number(item.updatedAt) || 0; }
 function compareItems(a, b) {
   if (state.view === 'history') return b.lastOpenedAt - a.lastOpenedAt;
@@ -52,8 +64,9 @@ function compareItems(a, b) {
 }
 
 function render() {
-  const allTags = [...new Set(state.items.flatMap((item) => item.tags ?? []))].sort((a, b) => a.localeCompare(b, 'ja'));
-  $('#tagFilters').replaceChildren(...allTags.map((tag) => { const button = document.createElement('button'); button.type = 'button'; button.className = `tag-chip${state.tag === tag ? ' active' : ''}`; button.textContent = `# ${tag}`; button.onclick = () => { state.tag = state.tag === tag ? '' : tag; render(); }; return button; }));
+  const allTags = [...new Set(state.items.flatMap((item) => item.tags ?? []))].sort(compareTags);
+  const editTags = document.createElement('button'); editTags.type = 'button'; editTags.className = 'tag-edit-button'; editTags.textContent = '⚙ タグを編集'; editTags.onclick = openTagEditor;
+  $('#tagFilters').replaceChildren(editTags, ...allTags.map((tag) => { const button = document.createElement('button'); button.type = 'button'; button.className = `tag-chip${state.tag === tag ? ' active' : ''}`; button.textContent = `# ${tag}`; button.onclick = () => { state.tag = state.tag === tag ? '' : tag; render(); }; return button; }));
   $('#allCount').textContent = state.items.length; $('#favoriteCount').textContent = state.items.filter((item) => item.favorite).length; $('#historyCount').textContent = state.items.filter((item) => item.lastOpenedAt).length;
   const visible = state.items.filter((item) => state.view === 'all' || (state.view === 'favorite' && item.favorite) || (state.view === 'history' && item.lastOpenedAt))
     .filter((item) => !state.tag || item.tags?.includes(state.tag))
@@ -89,10 +102,20 @@ $('#pathForm').onsubmit = async (event) => {
 $('#addButton').onclick = () => openEditor(); $('#addFileButton').onclick = () => addFileRow(); $('#nameInput').oninput = () => { nameAutoFill = $('#nameInput').value.trim() === deriveFolderName($('#pathInput').value); }; $('#pathInput').oninput = syncNameFromPath; $('#closeDialog').onclick = $('#cancelButton').onclick = () => dialog.close();
 $('#searchInput').oninput = (event) => { state.query = event.target.value; render(); };
 $('#sortSelect').onchange = (event) => { state.sort = event.target.value; render(); };
+$('#closeTagDialog').onclick = $('#cancelTagButton').onclick = () => $('#tagDialog').close();
+$('#tagForm').onsubmit = async (event) => {
+  event.preventDefault(); const rows = [...document.querySelectorAll('#tagRows .tag-edit-row')];
+  const edits = rows.map((row) => ({ oldTag: row.dataset.originalTag, tag: row.querySelector('.tag-name-input').value.trim(), reading: row.querySelector('.tag-reading-input').value.trim() }));
+  if (new Set(edits.map(({ tag }) => tag)).size !== edits.length) { showToast('同じタグ名が複数あります'); return; }
+  const renamed = Object.fromEntries(edits.map(({ oldTag, tag }) => [oldTag, tag]));
+  state.items.forEach((item) => { item.tags = [...new Set((item.tags ?? []).map((tag) => renamed[tag] ?? tag))]; });
+  state.tagSortKeys = Object.fromEntries(edits.filter(({ reading }) => reading).map(({ tag, reading }) => [tag, reading]));
+  if (state.tag) state.tag = renamed[state.tag] ?? state.tag; await persist(); $('#tagDialog').close(); render(); showToast('タグを更新しました');
+};
 document.querySelectorAll('.view-tab').forEach((button) => button.onclick = () => { state.view = button.dataset.view; document.querySelectorAll('.view-tab').forEach((tab) => tab.classList.toggle('active', tab === button)); render(); });
-$('#exportButton').onclick = async () => { const blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), items: state.items }, null, 2)], { type: 'application/json' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = backupFilename(); link.click(); URL.revokeObjectURL(link.href); state.backupSignatures = makeSignatures(); await chrome.storage.local.set({ folderPathBackupState: state.backupSignatures }); updateBackupCount(); showToast('バックアップを作成しました'); };
+$('#exportButton').onclick = async () => { const blob = new Blob([JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), items: state.items, tagSortKeys: state.tagSortKeys }, null, 2)], { type: 'application/json' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = backupFilename(); link.click(); URL.revokeObjectURL(link.href); state.backupSignatures = makeSignatures(); await chrome.storage.local.set({ folderPathBackupState: state.backupSignatures }); updateBackupCount(); showToast('バックアップを作成しました'); };
 $('#importButton').onclick = () => $('#importInput').click();
-$('#importInput').onchange = async (event) => { try { const data = JSON.parse(await event.target.files[0].text()); if (!Array.isArray(data.items) || data.items.some((item) => typeof item.name !== 'string' || typeof item.path !== 'string')) throw new Error(); state.items = data.items.map((item) => { const updatedAt = Number(item.updatedAt) || Date.now(); return { id: item.id || crypto.randomUUID(), name: item.name, path: item.path, memo: typeof item.memo === 'string' ? item.memo : '', tags: Array.isArray(item.tags) ? item.tags : [], favorite: Boolean(item.favorite), createdAt: Number(item.createdAt) || updatedAt, updatedAt, files: normalizeFiles(item.files), lastOpenedAt: Number(item.lastOpenedAt) || 0, openCount: Number(item.openCount) || 0 }; }); await persist(); render(); showToast(`${state.items.length}件を復元しました`); } catch { showToast('バックアップを読み込めませんでした'); } event.target.value = ''; };
-(async () => { const saved = await chrome.storage.local.get(['folderPaths', 'folderPathBackupState']); state.items = Array.isArray(saved.folderPaths) ? saved.folderPaths : []; state.backupSignatures = saved.folderPathBackupState && typeof saved.folderPathBackupState === 'object' ? saved.folderPathBackupState : {}; render(); updateBackupCount(); })();
+$('#importInput').onchange = async (event) => { try { const data = JSON.parse(await event.target.files[0].text()); if (!Array.isArray(data.items) || data.items.some((item) => typeof item.name !== 'string' || typeof item.path !== 'string')) throw new Error(); state.items = data.items.map((item) => { const updatedAt = Number(item.updatedAt) || Date.now(); return { id: item.id || crypto.randomUUID(), name: item.name, path: item.path, memo: typeof item.memo === 'string' ? item.memo : '', tags: Array.isArray(item.tags) ? item.tags : [], favorite: Boolean(item.favorite), createdAt: Number(item.createdAt) || updatedAt, updatedAt, files: normalizeFiles(item.files), lastOpenedAt: Number(item.lastOpenedAt) || 0, openCount: Number(item.openCount) || 0 }; }); state.tagSortKeys = data.tagSortKeys && typeof data.tagSortKeys === 'object' ? data.tagSortKeys : {}; await persist(); render(); showToast(`${state.items.length}件を復元しました`); } catch { showToast('バックアップを読み込めませんでした'); } event.target.value = ''; };
+(async () => { const saved = await chrome.storage.local.get(['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState']); state.items = Array.isArray(saved.folderPaths) ? saved.folderPaths : []; state.tagSortKeys = saved.folderPathTagSortKeys && typeof saved.folderPathTagSortKeys === 'object' ? saved.folderPathTagSortKeys : {}; state.backupSignatures = saved.folderPathBackupState && typeof saved.folderPathBackupState === 'object' ? saved.folderPathBackupState : {}; render(); updateBackupCount(); })();
 
 $('#appVersion').textContent = `v${chrome.runtime.getManifest().version}`;

@@ -8,7 +8,7 @@
   </head>
   <body>
     <header>
-      <div class="brand"><img src="icons/icon.svg" alt="" /><div><h1>FolderPath Memo</h1><p>フォルダー一覧 <span id="appVersion" class="version-badge">v1.3.7</span></p></div></div>
+      <div class="brand"><img src="icons/icon.svg" alt="" /><div><h1>FolderPath Memo</h1><p>フォルダー一覧 <span id="appVersion" class="version-badge">v1.3.8</span></p></div></div>
       <div class="header-actions"><button id="importButton" class="ghost-button" type="button">インポート</button><div class="backup-control"><button id="exportButton" class="ghost-button" type="button">バックアップ</button><span id="backupChangeCount" class="change-badge" title="前回バックアップからの変更件数">0</span></div><button id="addButton" class="primary-button" type="button">＋ 新規登録</button><input id="importInput" type="file" accept="application/json,.json" hidden /></div>
     </header>
     <main>
@@ -43,6 +43,15 @@
         </section>
         <label class="favorite-check"><input id="favoriteInput" type="checkbox" /> ★ お気に入りに追加</label>
         <div class="dialog-actions"><button id="cancelButton" class="ghost-button" type="button">キャンセル</button><button class="primary-button" type="submit">保存する</button></div>
+      </form>
+    </dialog>
+    <dialog id="tagDialog" class="tag-dialog">
+      <form id="tagForm" method="dialog">
+        <div class="dialog-header"><div><p>TAG SETTINGS</p><h2>タグを編集</h2></div><button id="closeTagDialog" class="close-button" type="button">×</button></div>
+        <p class="tag-dialog-hint">漢字のタグには、並び替えに使うよみがなや頭文字を登録できます。タグ名を変更すると、登録済みフォルダーにも反映されます。</p>
+        <div class="tag-row-header"><span>タグ名</span><span>よみがな・頭文字</span></div>
+        <div id="tagRows" class="tag-rows"></div>
+        <div class="dialog-actions"><button id="cancelTagButton" class="ghost-button" type="button">キャンセル</button><button class="primary-button" type="submit">保存する</button></div>
       </form>
     </dialog>
     <div id="toast" class="toast" role="status"></div>

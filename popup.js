@@ -3,7 +3,7 @@ const storage = globalThis.chrome?.storage?.local ?? {
   async set(value) { Object.entries(value).forEach(([key, data]) => localStorage.setItem(key, JSON.stringify(data))); }
 };
 
-const state = { items: [], query: '', view: 'all', tag: '', backupSignatures: {} };
+const state = { items: [], query: '', view: 'all', tag: '', tagSortKeys: {}, backupSignatures: {} };
 const $ = (selector) => document.querySelector(selector);
 const list = $('#list');
 const dialog = $('#pathDialog');
@@ -32,12 +32,12 @@ function fuzzyMatch(text, query) {
 }
 
 async function persist() {
-  await storage.set({ folderPaths: state.items });
+  await storage.set({ folderPaths: state.items, folderPathTagSortKeys: state.tagSortKeys });
   updateBackupCount();
   $('#statusText').textContent = 'すべての変更を保存しました';
 }
 
-function makeSignatures() { return Object.fromEntries(state.items.map((item) => [item.id, JSON.stringify(item)])); }
+function makeSignatures() { const signatures = Object.fromEntries(state.items.map((item) => [item.id, JSON.stringify(item)])); if (Object.keys(state.tagSortKeys).length) signatures.__tagSortKeys = JSON.stringify(state.tagSortKeys); return signatures; }
 function updateBackupCount() {
   const current = makeSignatures();
   const ids = new Set([...Object.keys(current), ...Object.keys(state.backupSignatures)]);
@@ -66,9 +66,23 @@ function showToast(message) {
   showToast.timer = setTimeout(() => toast.classList.remove('show'), 1800);
 }
 
+function tagSortValue(tag) { return (state.tagSortKeys[tag] || tag).trim(); }
+function compareTags(a, b) { return tagSortValue(a).localeCompare(tagSortValue(b), 'ja', { numeric: true, sensitivity: 'base' }) || a.localeCompare(b, 'ja'); }
+function openTagEditor() {
+  const tags = [...new Set(state.items.flatMap((item) => item.tags ?? []))].sort(compareTags);
+  $('#tagRows').replaceChildren(...tags.map((tag) => {
+    const row = document.createElement('div'); row.className = 'tag-edit-row'; row.dataset.originalTag = tag;
+    const name = document.createElement('input'); name.className = 'tag-name-input'; name.value = tag; name.maxLength = 50; name.required = true;
+    const reading = document.createElement('input'); reading.className = 'tag-reading-input'; reading.value = state.tagSortKeys[tag] ?? ''; reading.maxLength = 80; reading.placeholder = '例：せいぞう / せ';
+    row.append(name, reading); return row;
+  }));
+  $('#tagDialog').showModal();
+}
+
 function render() {
-  const tags = [...new Set(state.items.flatMap((item) => item.tags))].sort((a, b) => a.localeCompare(b, 'ja'));
-  $('#tagFilters').replaceChildren(...tags.map((tag) => {
+  const tags = [...new Set(state.items.flatMap((item) => item.tags))].sort(compareTags);
+  const editTags = document.createElement('button'); editTags.type = 'button'; editTags.className = 'tag-edit-button'; editTags.textContent = '⚙ タグを編集'; editTags.onclick = openTagEditor;
+  $('#tagFilters').replaceChildren(editTags, ...tags.map((tag) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `tag-chip${state.tag === tag ? ' active' : ''}`;
@@ -192,6 +206,16 @@ $('#pathInput').oninput = syncNameFromPath;
 $('#libraryButton').onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL('library.html') });
 $('#closeDialog').onclick = $('#cancelButton').onclick = () => dialog.close();
 $('#searchInput').oninput = (event) => { state.query = event.target.value; render(); };
+$('#closeTagDialog').onclick = $('#cancelTagButton').onclick = () => $('#tagDialog').close();
+$('#tagForm').onsubmit = async (event) => {
+  event.preventDefault(); const rows = [...document.querySelectorAll('#tagRows .tag-edit-row')];
+  const edits = rows.map((row) => ({ oldTag: row.dataset.originalTag, tag: row.querySelector('.tag-name-input').value.trim(), reading: row.querySelector('.tag-reading-input').value.trim() }));
+  if (new Set(edits.map(({ tag }) => tag)).size !== edits.length) { showToast('同じタグ名が複数あります'); return; }
+  const renamed = Object.fromEntries(edits.map(({ oldTag, tag }) => [oldTag, tag]));
+  state.items.forEach((item) => { item.tags = [...new Set((item.tags ?? []).map((tag) => renamed[tag] ?? tag))]; });
+  state.tagSortKeys = Object.fromEntries(edits.filter(({ reading }) => reading).map(({ tag, reading }) => [tag, reading]));
+  if (state.tag) state.tag = renamed[state.tag] ?? state.tag; await persist(); $('#tagDialog').close(); render(); showToast('タグを更新しました');
+};
 document.querySelectorAll('.view-tab').forEach((button) => button.onclick = () => {
   state.view = button.dataset.view; document.querySelectorAll('.view-tab').forEach((tab) => tab.classList.toggle('active', tab === button)); render();
 });
@@ -205,7 +229,7 @@ $('#copySetupCommand').onclick = async () => {
 };
 
 $('#exportButton').onclick = async () => {
-  const blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), items: state.items }, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), items: state.items, tagSortKeys: state.tagSortKeys }, null, 2)], { type: 'application/json' });
   const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = backupFilename(); link.click(); URL.revokeObjectURL(link.href);
   state.backupSignatures = makeSignatures(); await storage.set({ folderPathBackupState: state.backupSignatures }); updateBackupCount(); showToast('バックアップを作成しました');
 };
@@ -215,9 +239,10 @@ $('#importInput').onchange = async (event) => {
     const data = JSON.parse(await event.target.files[0].text());
     if (!Array.isArray(data.items) || data.items.some((item) => typeof item.name !== 'string' || typeof item.path !== 'string')) throw new Error('invalid');
     state.items = data.items.map((item) => { const updatedAt = Number(item.updatedAt) || Date.now(); return { id: item.id || crypto.randomUUID(), name: item.name, path: item.path, memo: typeof item.memo === 'string' ? item.memo : '', tags: Array.isArray(item.tags) ? item.tags : [], favorite: Boolean(item.favorite), createdAt: Number(item.createdAt) || updatedAt, updatedAt, files: normalizeFiles(item.files), lastOpenedAt: Number(item.lastOpenedAt) || 0, openCount: Number(item.openCount) || 0 }; });
+    state.tagSortKeys = data.tagSortKeys && typeof data.tagSortKeys === 'object' ? data.tagSortKeys : {};
     await persist(); render(); showToast(`${state.items.length}件を復元しました`);
   } catch { showToast('バックアップファイルを読み込めませんでした'); }
   event.target.value = '';
 };
 
-(async () => { const saved = await storage.get(['folderPaths', 'folderPathBackupState']); state.items = Array.isArray(saved.folderPaths) ? saved.folderPaths : []; state.backupSignatures = saved.folderPathBackupState && typeof saved.folderPathBackupState === 'object' ? saved.folderPathBackupState : {}; render(); updateBackupCount(); })();
+(async () => { const saved = await storage.get(['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState']); state.items = Array.isArray(saved.folderPaths) ? saved.folderPaths : []; state.tagSortKeys = saved.folderPathTagSortKeys && typeof saved.folderPathTagSortKeys === 'object' ? saved.folderPathTagSortKeys : {}; state.backupSignatures = saved.folderPathBackupState && typeof saved.folderPathBackupState === 'object' ? saved.folderPathBackupState : {}; render(); updateBackupCount(); })();
