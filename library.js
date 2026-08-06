@@ -45,13 +45,19 @@ function openEditor(item) {
 function cell(className, text = '') { const element = document.createElement('td'); element.className = className; element.textContent = text; return element; }
 function tagSortValue(tag) { return (state.tagSortKeys[tag] || tag).trim(); }
 function compareTags(a, b) { return tagSortValue(a).localeCompare(tagSortValue(b), 'ja', { numeric: true, sensitivity: 'base' }) || a.localeCompare(b, 'ja'); }
+function decorateTag(element, tag, actionHint = '') {
+  const reading = String(state.tagSortKeys[tag] ?? '').trim();
+  element.classList.toggle('has-reading', Boolean(reading));
+  element.title = [reading ? `よみ：${reading}` : '', actionHint].filter(Boolean).join('\n');
+}
 function openTagEditor() {
   const allTags = [...new Set(state.items.flatMap((item) => item.tags ?? []))].sort(compareTags);
   $('#tagRows').replaceChildren(...allTags.map((tag) => {
     const row = document.createElement('div'); row.className = 'tag-edit-row'; row.dataset.originalTag = tag;
     const name = document.createElement('input'); name.className = 'tag-name-input'; name.value = tag; name.maxLength = 50; name.required = true;
     const reading = document.createElement('input'); reading.className = 'tag-reading-input'; reading.value = state.tagSortKeys[tag] ?? ''; reading.maxLength = 80; reading.placeholder = '例：せいぞう / せ';
-    row.append(name, reading); return row;
+    const count = document.createElement('span'); count.className = 'tag-use-count'; count.textContent = `${state.items.filter((item) => item.tags?.includes(tag)).length} 件`;
+    row.append(name, reading, count); return row;
   }));
   $('#tagDialog').showModal();
 }
@@ -66,7 +72,7 @@ function compareItems(a, b) {
 function render() {
   const allTags = [...new Set(state.items.flatMap((item) => item.tags ?? []))].sort(compareTags);
   const editTags = document.createElement('button'); editTags.type = 'button'; editTags.className = 'tag-edit-button'; editTags.textContent = '⚙ タグを編集'; editTags.onclick = openTagEditor;
-  $('#tagFilters').replaceChildren(editTags, ...allTags.map((tag) => { const button = document.createElement('button'); button.type = 'button'; button.className = `tag-chip${state.tag === tag ? ' active' : ''}`; button.textContent = `# ${tag}`; button.onclick = () => { state.tag = state.tag === tag ? '' : tag; render(); }; return button; }));
+  $('#tagFilters').replaceChildren(editTags, ...allTags.map((tag) => { const button = document.createElement('button'); button.type = 'button'; button.className = `tag-chip${state.tag === tag ? ' active' : ''}`; button.textContent = `# ${tag}`; decorateTag(button, tag, 'クリックして絞り込む'); button.onclick = () => { state.tag = state.tag === tag ? '' : tag; render(); }; return button; }));
   $('#allCount').textContent = state.items.length; $('#favoriteCount').textContent = state.items.filter((item) => item.favorite).length; $('#historyCount').textContent = state.items.filter((item) => item.lastOpenedAt).length;
   const visible = state.items.filter((item) => state.view === 'all' || (state.view === 'favorite' && item.favorite) || (state.view === 'history' && item.lastOpenedAt))
     .filter((item) => !state.tag || item.tags?.includes(state.tag))
@@ -78,7 +84,7 @@ function render() {
     const star = cell('star', item.favorite ? '★' : '☆'); star.onclick = async (event) => { event.stopPropagation(); item.favorite = !item.favorite; item.updatedAt = Date.now(); await persist(); render(); }; row.append(star);
     const info = cell('info'); const name = document.createElement('div'); name.className = 'folder-name'; name.textContent = item.name; info.append(name);
     if (item.memo) { const memo = document.createElement('div'); memo.className = 'memo'; memo.textContent = item.memo; info.append(memo); } row.append(info);
-    const tags = cell('tags'); (item.tags ?? []).forEach((tag) => { const badge = document.createElement('button'); badge.type = 'button'; badge.className = `tag${state.tag === tag ? ' active' : ''}`; badge.textContent = tag; badge.title = `「${tag}」で絞り込む`; badge.onclick = (event) => { event.stopPropagation(); state.tag = state.tag === tag ? '' : tag; render(); }; tags.append(badge); }); row.append(tags);
+    const tags = cell('tags'); (item.tags ?? []).forEach((tag) => { const badge = document.createElement('button'); badge.type = 'button'; badge.className = `tag${state.tag === tag ? ' active' : ''}`; badge.textContent = tag; decorateTag(badge, tag, 'クリックして絞り込む'); badge.onclick = (event) => { event.stopPropagation(); state.tag = state.tag === tag ? '' : tag; render(); }; tags.append(badge); }); row.append(tags);
     row.append(cell('path', item.path));
     const actions = cell('actions');
     const copy = document.createElement('button'); copy.textContent = 'コピー'; copy.onclick = async (event) => { event.stopPropagation(); await navigator.clipboard.writeText(item.path); showToast('コピーしました'); };

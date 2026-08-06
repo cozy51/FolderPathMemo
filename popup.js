@@ -68,13 +68,19 @@ function showToast(message) {
 
 function tagSortValue(tag) { return (state.tagSortKeys[tag] || tag).trim(); }
 function compareTags(a, b) { return tagSortValue(a).localeCompare(tagSortValue(b), 'ja', { numeric: true, sensitivity: 'base' }) || a.localeCompare(b, 'ja'); }
+function decorateTag(element, tag, actionHint = '') {
+  const reading = String(state.tagSortKeys[tag] ?? '').trim();
+  element.classList.toggle('has-reading', Boolean(reading));
+  element.title = [reading ? `よみ：${reading}` : '', actionHint].filter(Boolean).join('\n');
+}
 function openTagEditor() {
   const tags = [...new Set(state.items.flatMap((item) => item.tags ?? []))].sort(compareTags);
   $('#tagRows').replaceChildren(...tags.map((tag) => {
     const row = document.createElement('div'); row.className = 'tag-edit-row'; row.dataset.originalTag = tag;
     const name = document.createElement('input'); name.className = 'tag-name-input'; name.value = tag; name.maxLength = 50; name.required = true;
     const reading = document.createElement('input'); reading.className = 'tag-reading-input'; reading.value = state.tagSortKeys[tag] ?? ''; reading.maxLength = 80; reading.placeholder = '例：せいぞう / せ';
-    row.append(name, reading); return row;
+    const count = document.createElement('span'); count.className = 'tag-use-count'; count.textContent = `${state.items.filter((item) => item.tags?.includes(tag)).length} 件`;
+    row.append(name, reading, count); return row;
   }));
   $('#tagDialog').showModal();
 }
@@ -87,6 +93,7 @@ function render() {
     button.type = 'button';
     button.className = `tag-chip${state.tag === tag ? ' active' : ''}`;
     button.textContent = `# ${tag}`;
+    decorateTag(button, tag, 'クリックして絞り込む');
     button.onclick = () => { state.tag = state.tag === tag ? '' : tag; render(); };
     return button;
   }));
@@ -123,7 +130,7 @@ function createCard(item) {
   card.querySelector('.path-main').append(createFileList(item));
   const favorite = card.querySelector('.favorite-button');
   favorite.classList.toggle('active', item.favorite);
-  card.querySelector('.card-tags').replaceChildren(...item.tags.slice(0, 3).map((tag) => { const el = document.createElement('button'); el.type = 'button'; el.classList.toggle('active', state.tag === tag); el.textContent = tag; el.title = `「${tag}」で絞り込む`; el.onclick = (event) => { event.stopPropagation(); state.tag = state.tag === tag ? '' : tag; render(); }; return el; }));
+  card.querySelector('.card-tags').replaceChildren(...item.tags.slice(0, 3).map((tag) => { const el = document.createElement('button'); el.type = 'button'; el.classList.toggle('active', state.tag === tag); el.textContent = tag; decorateTag(el, tag, 'クリックして絞り込む'); el.onclick = (event) => { event.stopPropagation(); state.tag = state.tag === tag ? '' : tag; render(); }; return el; }));
   favorite.onclick = async () => { item.favorite = !item.favorite; item.updatedAt = Date.now(); await persist(); render(); };
   const copy = async () => { await navigator.clipboard.writeText(item.path); showToast('パスをコピーしました'); };
   card.querySelector('.copy-button').onclick = copy;
