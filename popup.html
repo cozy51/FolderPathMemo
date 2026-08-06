@@ -43,7 +43,7 @@
 
       <section id="list" class="path-list" aria-live="polite"></section>
 
-      <footer><span id="statusText">クリックで開く・ダブルクリックで編集</span><span>FolderPath Memo v1.3.6</span></footer>
+      <footer><span id="statusText">クリックで開く・ダブルクリックで編集</span><span>FolderPath Memo v1.3.12</span></footer>
     </main>
 
     <dialog id="pathDialog">
@@ -54,7 +54,7 @@
         <label>フォルダ名 <small class="auto-label">自動入力</small><input id="nameInput" maxlength="80" placeholder="パスから自動入力されます" /></label>
         <p class="auto-name-hint">フォルダーパスを入力すると、最後のフォルダ名を自動で入れます。必要な場合だけ手入力で変更できます。</p>
         <label>メモ <small>用途などを自由に記入</small><textarea id="memoInput" maxlength="300" rows="3" placeholder="例：月次報告書と関連資料の保存先"></textarea></label>
-        <label>タグ <small>カンマ区切り</small><input id="tagsInput" maxlength="200" placeholder="例：仕事, 重要" /></label>
+        <label>タグ <small>登録済みタグから選択</small><div id="tagChoices" class="tag-choices" aria-label="登録済みタグ"></div><input id="tagsInput" maxlength="200" placeholder="新規タグを入力（カンマ区切り）" /></label>
         <section class="file-list-editor" aria-label="ファイルリスト">
           <div class="file-list-editor-header"><span>ファイルリスト</span><small>ファイル名とメモを登録</small></div>
           <div class="file-row-header"><span>No</span><span>ファイル名</span><span>ファイルメモ</span><span></span></div>
@@ -73,6 +73,16 @@
         <ol><li><code>chrome://extensions</code>でこの拡張機能のIDをコピー</li><li>配布フォルダーでPowerShellを開く</li><li>README記載のインストールコマンドを実行してChromeを再起動</li></ol>
         <button id="copySetupCommand" class="primary-button" type="button">セットアップコマンドをコピー</button>
       </div>
+    </dialog>
+
+    <dialog id="tagDialog" class="tag-dialog">
+      <form id="tagForm" method="dialog">
+        <div class="dialog-header"><div><p class="eyebrow">TAG SETTINGS</p><h2>タグを編集</h2></div><button id="closeTagDialog" class="icon-button" type="button" aria-label="閉じる">×</button></div>
+        <p class="tag-dialog-hint">漢字のタグには、並び替えに使うよみがなや頭文字を登録できます。タグ名を変更すると、登録済みフォルダーにも反映されます。</p>
+        <div class="tag-row-header"><span>タグ名</span><span>よみがな・頭文字</span><span>登録件数</span></div>
+        <div id="tagRows" class="tag-rows"></div>
+        <div class="dialog-actions"><button id="cancelTagButton" class="secondary-button" type="button">キャンセル</button><button class="primary-button" type="submit">保存する</button></div>
+      </form>
     </dialog>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
