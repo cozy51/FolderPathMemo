@@ -2,6 +2,7 @@ const state = { items: [], query: '', view: 'all', tag: '', sort: 'registered-de
 const $ = (selector) => document.querySelector(selector);
 const dialog = $('#pathDialog');
 let nameAutoFill = true;
+let editingTags = new Set();
 function deriveFolderName(path) { const normalized = path.trim().replace(/[\\/]+$/, ''); return normalized.split(/[\\/]/).filter(Boolean).pop() || path.trim(); }
 function syncNameFromPath() { if (nameAutoFill) $('#nameInput').value = deriveFolderName($('#pathInput').value); }
 
@@ -37,7 +38,7 @@ function openEditor(item) {
   $('#dialogTitle').textContent = item ? 'フォルダーを編集' : 'フォルダーを登録';
   nameAutoFill = !item;
   $('#itemId').value = item?.id ?? ''; $('#nameInput').value = item?.name ?? ''; $('#pathInput').value = item?.path ?? '';
-  $('#memoInput').value = item?.memo ?? ''; $('#tagsInput').value = item?.tags?.join(', ') ?? ''; $('#favoriteInput').checked = item?.favorite ?? false;
+  $('#memoInput').value = item?.memo ?? ''; editingTags = new Set(item?.tags ?? []); $('#tagsInput').value = ''; renderTagChoices(); $('#favoriteInput').checked = item?.favorite ?? false;
   renderFileRows(item?.files);
   syncNameFromPath();
   dialog.showModal(); (item ? $('#nameInput') : $('#pathInput')).focus();
@@ -45,10 +46,22 @@ function openEditor(item) {
 function cell(className, text = '') { const element = document.createElement('td'); element.className = className; element.textContent = text; return element; }
 function tagSortValue(tag) { return (state.tagSortKeys[tag] || tag).trim(); }
 function compareTags(a, b) { return tagSortValue(a).localeCompare(tagSortValue(b), 'ja', { numeric: true, sensitivity: 'base' }) || a.localeCompare(b, 'ja'); }
-function decorateTag(element, tag, actionHint = '') {
+function renderTagChoices() {
+  const tags = [...new Set(state.items.flatMap((item) => item.tags ?? []))].sort(compareTags);
+  $('#tagChoices').replaceChildren(...tags.map((tag) => {
+    const button = document.createElement('button'); button.type = 'button'; button.className = `tag-choice${editingTags.has(tag) ? ' selected' : ''}`; button.textContent = `# ${tag}`; decorateTag(button, tag);
+    button.onclick = () => { if (editingTags.has(tag)) editingTags.delete(tag); else editingTags.add(tag); renderTagChoices(); }; return button;
+  }));
+}
+function collectEditorTags() {
+  const existingTags = [...new Set(state.items.flatMap((item) => item.tags ?? []))];
+  const enteredTags = $('#tagsInput').value.split(',').map((tag) => tag.trim()).filter(Boolean).map((tag) => existingTags.find((existing) => existing.localeCompare(tag, 'ja', { sensitivity: 'base' }) === 0) ?? tag);
+  return [...new Set([...editingTags, ...enteredTags])];
+}
+function decorateTag(element, tag) {
   const reading = String(state.tagSortKeys[tag] ?? '').trim();
   element.classList.toggle('has-reading', Boolean(reading));
-  element.title = [reading ? `よみ：${reading}` : '', actionHint].filter(Boolean).join('\n');
+  element.title = reading ? `よみ：${reading}` : `タグ名：${tag}`;
 }
 function openTagEditor() {
   const allTags = [...new Set(state.items.flatMap((item) => item.tags ?? []))].sort(compareTags);
@@ -71,8 +84,8 @@ function compareItems(a, b) {
 
 function render() {
   const allTags = [...new Set(state.items.flatMap((item) => item.tags ?? []))].sort(compareTags);
-  const editTags = document.createElement('button'); editTags.type = 'button'; editTags.className = 'tag-edit-button'; editTags.textContent = '⚙ タグを編集'; editTags.onclick = openTagEditor;
-  $('#tagFilters').replaceChildren(editTags, ...allTags.map((tag) => { const button = document.createElement('button'); button.type = 'button'; button.className = `tag-chip${state.tag === tag ? ' active' : ''}`; button.textContent = `# ${tag}`; decorateTag(button, tag, 'クリックして絞り込む'); button.onclick = () => { state.tag = state.tag === tag ? '' : tag; render(); }; return button; }));
+  const editTags = document.createElement('button'); editTags.type = 'button'; editTags.className = 'tag-edit-button'; editTags.textContent = '⚙ タグ設定'; editTags.title = 'タグ名・よみがなを編集'; editTags.onclick = openTagEditor;
+  $('#tagFilters').replaceChildren(editTags, ...allTags.map((tag) => { const button = document.createElement('button'); button.type = 'button'; button.className = `tag-chip${state.tag === tag ? ' active' : ''}`; button.textContent = `# ${tag}`; decorateTag(button, tag); button.onclick = () => { state.tag = state.tag === tag ? '' : tag; render(); }; return button; }));
   $('#allCount').textContent = state.items.length; $('#favoriteCount').textContent = state.items.filter((item) => item.favorite).length; $('#historyCount').textContent = state.items.filter((item) => item.lastOpenedAt).length;
   const visible = state.items.filter((item) => state.view === 'all' || (state.view === 'favorite' && item.favorite) || (state.view === 'history' && item.lastOpenedAt))
     .filter((item) => !state.tag || item.tags?.includes(state.tag))
@@ -84,7 +97,7 @@ function render() {
     const star = cell('star', item.favorite ? '★' : '☆'); star.onclick = async (event) => { event.stopPropagation(); item.favorite = !item.favorite; item.updatedAt = Date.now(); await persist(); render(); }; row.append(star);
     const info = cell('info'); const name = document.createElement('div'); name.className = 'folder-name'; name.textContent = item.name; info.append(name);
     if (item.memo) { const memo = document.createElement('div'); memo.className = 'memo'; memo.textContent = item.memo; info.append(memo); } row.append(info);
-    const tags = cell('tags'); (item.tags ?? []).forEach((tag) => { const badge = document.createElement('button'); badge.type = 'button'; badge.className = `tag${state.tag === tag ? ' active' : ''}`; badge.textContent = tag; decorateTag(badge, tag, 'クリックして絞り込む'); badge.onclick = (event) => { event.stopPropagation(); state.tag = state.tag === tag ? '' : tag; render(); }; tags.append(badge); }); row.append(tags);
+    const tags = cell('tags'); (item.tags ?? []).forEach((tag) => { const badge = document.createElement('button'); badge.type = 'button'; badge.className = `tag${state.tag === tag ? ' active' : ''}`; badge.textContent = tag; decorateTag(badge, tag); badge.onclick = (event) => { event.stopPropagation(); state.tag = state.tag === tag ? '' : tag; render(); }; tags.append(badge); }); row.append(tags);
     row.append(cell('path', item.path));
     const actions = cell('actions');
     const copy = document.createElement('button'); copy.textContent = 'コピー'; copy.onclick = async (event) => { event.stopPropagation(); await navigator.clipboard.writeText(item.path); showToast('コピーしました'); };
@@ -102,7 +115,7 @@ function render() {
 $('#pathForm').onsubmit = async (event) => {
   event.preventDefault(); const id = $('#itemId').value; const existing = state.items.find((item) => item.id === id); const path = $('#pathInput').value.trim(); const derivedName = deriveFolderName(path);
   const now = Date.now();
-  const item = { id: id || crypto.randomUUID(), name: $('#nameInput').value.trim() || derivedName, path, memo: $('#memoInput').value.trim(), tags: [...new Set($('#tagsInput').value.split(',').map((tag) => tag.trim()).filter(Boolean))], favorite: $('#favoriteInput').checked, files: readFileRows(), createdAt: existing?.createdAt ?? existing?.updatedAt ?? now, updatedAt: now, lastOpenedAt: existing?.lastOpenedAt ?? 0, openCount: existing?.openCount ?? 0 };
+  const item = { id: id || crypto.randomUUID(), name: $('#nameInput').value.trim() || derivedName, path, memo: $('#memoInput').value.trim(), tags: collectEditorTags(), favorite: $('#favoriteInput').checked, files: readFileRows(), createdAt: existing?.createdAt ?? existing?.updatedAt ?? now, updatedAt: now, lastOpenedAt: existing?.lastOpenedAt ?? 0, openCount: existing?.openCount ?? 0 };
   if (existing) Object.assign(existing, item); else state.items.push(item); await persist(); dialog.close(); render(); showToast(existing ? '更新しました' : '登録しました');
 };
 $('#addButton').onclick = () => openEditor(); $('#addFileButton').onclick = () => addFileRow(); $('#nameInput').oninput = () => { nameAutoFill = $('#nameInput').value.trim() === deriveFolderName($('#pathInput').value); }; $('#pathInput').oninput = syncNameFromPath; $('#closeDialog').onclick = $('#cancelButton').onclick = () => dialog.close();

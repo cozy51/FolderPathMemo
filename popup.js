@@ -8,6 +8,7 @@ const $ = (selector) => document.querySelector(selector);
 const list = $('#list');
 const dialog = $('#pathDialog');
 let nameAutoFill = true;
+let editingTags = new Set();
 
 function deriveFolderName(path) {
   const normalized = path.trim().replace(/[\\/]+$/, '');
@@ -68,10 +69,22 @@ function showToast(message) {
 
 function tagSortValue(tag) { return (state.tagSortKeys[tag] || tag).trim(); }
 function compareTags(a, b) { return tagSortValue(a).localeCompare(tagSortValue(b), 'ja', { numeric: true, sensitivity: 'base' }) || a.localeCompare(b, 'ja'); }
-function decorateTag(element, tag, actionHint = '') {
+function renderTagChoices() {
+  const tags = [...new Set(state.items.flatMap((item) => item.tags ?? []))].sort(compareTags);
+  $('#tagChoices').replaceChildren(...tags.map((tag) => {
+    const button = document.createElement('button'); button.type = 'button'; button.className = `tag-choice${editingTags.has(tag) ? ' selected' : ''}`; button.textContent = `# ${tag}`; decorateTag(button, tag);
+    button.onclick = () => { if (editingTags.has(tag)) editingTags.delete(tag); else editingTags.add(tag); renderTagChoices(); }; return button;
+  }));
+}
+function collectEditorTags() {
+  const existingTags = [...new Set(state.items.flatMap((item) => item.tags ?? []))];
+  const enteredTags = $('#tagsInput').value.split(',').map((tag) => tag.trim()).filter(Boolean).map((tag) => existingTags.find((existing) => existing.localeCompare(tag, 'ja', { sensitivity: 'base' }) === 0) ?? tag);
+  return [...new Set([...editingTags, ...enteredTags])];
+}
+function decorateTag(element, tag) {
   const reading = String(state.tagSortKeys[tag] ?? '').trim();
   element.classList.toggle('has-reading', Boolean(reading));
-  element.title = [reading ? `よみ：${reading}` : '', actionHint].filter(Boolean).join('\n');
+  element.title = reading ? `よみ：${reading}` : `タグ名：${tag}`;
 }
 function openTagEditor() {
   const tags = [...new Set(state.items.flatMap((item) => item.tags ?? []))].sort(compareTags);
@@ -87,13 +100,13 @@ function openTagEditor() {
 
 function render() {
   const tags = [...new Set(state.items.flatMap((item) => item.tags))].sort(compareTags);
-  const editTags = document.createElement('button'); editTags.type = 'button'; editTags.className = 'tag-edit-button'; editTags.textContent = '⚙ タグを編集'; editTags.onclick = openTagEditor;
+  const editTags = document.createElement('button'); editTags.type = 'button'; editTags.className = 'tag-edit-button'; editTags.textContent = '⚙ タグ設定'; editTags.title = 'タグ名・よみがなを編集'; editTags.onclick = openTagEditor;
   $('#tagFilters').replaceChildren(editTags, ...tags.map((tag) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `tag-chip${state.tag === tag ? ' active' : ''}`;
     button.textContent = `# ${tag}`;
-    decorateTag(button, tag, 'クリックして絞り込む');
+    decorateTag(button, tag);
     button.onclick = () => { state.tag = state.tag === tag ? '' : tag; render(); };
     return button;
   }));
@@ -130,7 +143,7 @@ function createCard(item) {
   card.querySelector('.path-main').append(createFileList(item));
   const favorite = card.querySelector('.favorite-button');
   favorite.classList.toggle('active', item.favorite);
-  card.querySelector('.card-tags').replaceChildren(...item.tags.slice(0, 3).map((tag) => { const el = document.createElement('button'); el.type = 'button'; el.classList.toggle('active', state.tag === tag); el.textContent = tag; decorateTag(el, tag, 'クリックして絞り込む'); el.onclick = (event) => { event.stopPropagation(); state.tag = state.tag === tag ? '' : tag; render(); }; return el; }));
+  card.querySelector('.card-tags').replaceChildren(...item.tags.slice(0, 3).map((tag) => { const el = document.createElement('button'); el.type = 'button'; el.classList.toggle('active', state.tag === tag); el.textContent = tag; decorateTag(el, tag); el.onclick = (event) => { event.stopPropagation(); state.tag = state.tag === tag ? '' : tag; render(); }; return el; }));
   favorite.onclick = async () => { item.favorite = !item.favorite; item.updatedAt = Date.now(); await persist(); render(); };
   const copy = async () => { await navigator.clipboard.writeText(item.path); showToast('パスをコピーしました'); };
   card.querySelector('.copy-button').onclick = copy;
@@ -182,7 +195,9 @@ function openEditor(item) {
   $('#nameInput').value = item?.name ?? '';
   $('#pathInput').value = item?.path ?? '';
   $('#memoInput').value = item?.memo ?? '';
-  $('#tagsInput').value = item?.tags.join(', ') ?? '';
+  editingTags = new Set(item?.tags ?? []);
+  $('#tagsInput').value = '';
+  renderTagChoices();
   $('#favoriteInput').checked = item?.favorite ?? false;
   renderFileRows(item?.files);
   syncNameFromPath();
@@ -200,7 +215,7 @@ $('#pathForm').addEventListener('submit', async (event) => {
   const item = {
     id: id || crypto.randomUUID(), name: $('#nameInput').value.trim() || derivedName, path,
     memo: $('#memoInput').value.trim(),
-    tags: [...new Set($('#tagsInput').value.split(',').map((tag) => tag.trim()).filter(Boolean))],
+    tags: collectEditorTags(),
     favorite: $('#favoriteInput').checked, files: readFileRows(), createdAt: existing?.createdAt ?? existing?.updatedAt ?? now, updatedAt: now
   };
   if (existing) Object.assign(existing, item); else state.items.push(item);
