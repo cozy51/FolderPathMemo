@@ -149,7 +149,7 @@ function render() {
 function createCard(item) {
   const card = $('#itemTemplate').content.firstElementChild.cloneNode(true);
   card.querySelector('h3').textContent = item.name;
-  const fileCount = document.createElement('span'); fileCount.className = 'file-count-badge'; fileCount.textContent = `ファイル ${normalizeFiles(item.files).length}件`; fileCount.title = `登録ファイル数：${normalizeFiles(item.files).length}件`; card.querySelector('.path-title-row').insertBefore(fileCount, card.querySelector('.card-tags'));
+  const fileTotal = normalizeFiles(item.files).length; if (fileTotal > 0) { const fileCount = document.createElement('span'); fileCount.className = 'file-count-badge compact'; fileCount.textContent = `${fileTotal}件`; fileCount.title = `登録ファイル数：${fileTotal}件`; fileCount.setAttribute('aria-label', `登録ファイル数 ${fileTotal}件`); card.querySelector('.path-title-row').insertBefore(fileCount, card.querySelector('.card-tags')); }
   card.querySelector('.path-value').textContent = item.path;
   card.querySelector('.path-memo').textContent = item.memo ?? '';
   card.querySelector('.path-main').append(createFileList(item));
