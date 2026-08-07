@@ -194,7 +194,12 @@ async function openFolder(item) {
     item.openCount = (item.openCount ?? 0) + 1;
     await persist();
     render();
-    showToast(response.openedInTab ? 'エクスプローラーの新しいタブで開きました' : 'エクスプローラーで開きました');
+    // Updating the extension files does not rebuild the native host, and a host left behind keeps
+    // behaving like its own build without any visible sign.
+    const hostVersion = response.version ?? '1.3.25以前';
+    const expectedVersion = chrome.runtime.getManifest().version;
+    if (hostVersion !== expectedVersion) showToast(`連携ホストが古いままです（${hostVersion}）。install.ps1 を実行し直してください`);
+    else showToast(response.openedInTab ? 'エクスプローラーの新しいタブで開きました' : 'エクスプローラーで開きました');
   } catch (error) {
     await navigator.clipboard.writeText(item.path);
     showToast('パスをコピーしました。連携設定を確認してください');

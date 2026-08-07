@@ -14,7 +14,7 @@ internal static class FolderPathNativeHost
 {
     // Kept in step with the version in manifest.json; the installer verifies that the host it
     // just built reports this value.
-    private const string HostVersion = "1.3.26";
+    private const string HostVersion = "1.3.27";
 
     private const int MaximumMessageBytes = 1024 * 1024;
     private const int Windows11ExplorerTabsBuild = 22621;
@@ -157,13 +157,17 @@ internal static class FolderPathNativeHost
                     OpenInNewExplorerWindow(path);
                 }
                 Log("done openedInTab=" + openedInTab);
-                Write(output, "{\"ok\":true,\"openedInTab\":" + openedInTab.ToString().ToLowerInvariant() + "}");
+                // The extension compares this against its own version: updating the extension
+                // files does not rebuild this host, and a stale host silently behaves like the
+                // build it was compiled from.
+                Write(output, "{\"ok\":true,\"openedInTab\":" + openedInTab.ToString().ToLowerInvariant()
+                    + ",\"version\":\"" + HostVersion + "\"}");
             }
             catch (Exception exception)
             {
                 Log("error: " + exception.Message);
                 var serializer = new JavaScriptSerializer();
-                Write(output, serializer.Serialize(new { ok = false, error = exception.Message }));
+                Write(output, serializer.Serialize(new { ok = false, error = exception.Message, version = HostVersion }));
             }
             finally
             {

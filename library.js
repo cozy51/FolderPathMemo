@@ -42,7 +42,9 @@ async function openFolder(item) {
     const response = await chrome.runtime.sendMessage({ type: 'open_folder', path: item.path });
     if (!response?.ok) throw new Error(response?.error);
     item.lastOpenedAt = Date.now(); item.openCount = (item.openCount ?? 0) + 1; await persist(); render();
-    showToast(response.openedInTab ? '新しいタブで開きました' : 'エクスプローラーで開きました');
+    const hostVersion = response.version ?? '1.3.25以前';
+    if (hostVersion !== chrome.runtime.getManifest().version) showToast(`連携ホストが古いままです（${hostVersion}）。install.ps1 を実行し直してください`);
+    else showToast(response.openedInTab ? '新しいタブで開きました' : 'エクスプローラーで開きました');
   } catch { await navigator.clipboard.writeText(item.path); showToast('連携できないためパスをコピーしました'); }
 }
 function openEditor(item) {
