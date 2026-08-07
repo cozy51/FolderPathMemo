@@ -12,6 +12,10 @@ using Microsoft.Win32;
 
 internal static class FolderPathNativeHost
 {
+    // Kept in step with the version in manifest.json; the installer verifies that the host it
+    // just built reports this value.
+    private const string HostVersion = "1.3.26";
+
     private const int MaximumMessageBytes = 1024 * 1024;
     private const int Windows11ExplorerTabsBuild = 22621;
     private const int ExplorerActivationDelayMs = 400;
@@ -116,14 +120,25 @@ internal static class FolderPathNativeHost
     private static extern uint GetCurrentThreadId();
 
     [STAThread]
-    public static void Main()
+    public static void Main(string[] arguments)
     {
+        // The installer, and anyone checking an installation by hand, needs a way to tell which
+        // build actually sits in %LOCALAPPDATA%: the extension files can be updated without
+        // rebuilding the host, and then none of the changes here are in effect.
+        if (arguments != null && arguments.Length > 0
+            && string.Equals(arguments[0], "-version", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.Out.WriteLine(HostVersion);
+            return;
+        }
+
         using (Stream input = Console.OpenStandardInput())
         using (Stream output = Console.OpenStandardOutput())
         {
             string path = null;
             try
             {
+                Log("host version " + HostVersion);
                 byte[] lengthBytes = ReadExactly(input, 4);
                 int length = BitConverter.ToInt32(lengthBytes, 0);
                 if (length <= 0 || length > MaximumMessageBytes) throw new InvalidDataException("Invalid message size.");
