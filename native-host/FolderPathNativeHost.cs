@@ -14,6 +14,9 @@ internal static class FolderPathNativeHost
     private const int MaximumMessageBytes = 1024 * 1024;
     private const int Windows11ExplorerTabsBuild = 22621;
     private const int ExplorerActivationDelayMs = 400;
+    private const int ExplorerRestoreDelayMs = 1000;
+    private const int ExplorerFocusTimeoutMs = 3000;
+    private const int ExplorerFocusRetryMs = 100;
     private const int NewTabReadyDelayMs = 1500;
     private const int AddressBarReadyDelayMs = 500;
     private const int ClipboardReadyDelayMs = 150;
@@ -24,6 +27,17 @@ internal static class FolderPathNativeHost
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr window);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr window);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr window, int command);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    private const int ShowWindowRestore = 9;
 
     [STAThread]
     public static void Main()
@@ -65,10 +79,11 @@ internal static class FolderPathNativeHost
         IntPtr explorerWindow = FindWindow("CabinetWClass", null);
         if (explorerWindow == IntPtr.Zero) return false;
 
-        if (!SetForegroundWindow(explorerWindow)) return false;
+        if (!ActivateExplorerWindow(explorerWindow)) return false;
         Thread.Sleep(ExplorerActivationDelayMs);
         SendKeys.SendWait("^t");
         Thread.Sleep(NewTabReadyDelayMs);
+        if (!ActivateExplorerWindow(explorerWindow)) return false;
         SendKeys.SendWait("^l");
         Thread.Sleep(AddressBarReadyDelayMs);
 
@@ -102,6 +117,25 @@ internal static class FolderPathNativeHost
                 // Explorer has already received the path; clipboard restoration is best-effort.
             }
         }
+    }
+
+    private static bool ActivateExplorerWindow(IntPtr explorerWindow)
+    {
+        if (IsIconic(explorerWindow))
+        {
+            ShowWindow(explorerWindow, ShowWindowRestore);
+            Thread.Sleep(ExplorerRestoreDelayMs);
+        }
+
+        int waited = 0;
+        while (waited <= ExplorerFocusTimeoutMs)
+        {
+            SetForegroundWindow(explorerWindow);
+            if (GetForegroundWindow() == explorerWindow) return true;
+            Thread.Sleep(ExplorerFocusRetryMs);
+            waited += ExplorerFocusRetryMs;
+        }
+        return false;
     }
 
     private static int GetWindowsBuildNumber()
