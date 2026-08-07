@@ -14,6 +14,8 @@ internal static class FolderPathNativeHost
     private const int MaximumMessageBytes = 1024 * 1024;
     private const int Windows11ExplorerTabsBuild = 22621;
     private const int ExplorerActivationDelayMs = 400;
+    private const int ExplorerFocusTimeoutMs = 3000;
+    private const int ExplorerFocusRetryMs = 100;
     private const int NewTabReadyDelayMs = 1500;
     private const int AddressBarReadyDelayMs = 500;
     private const int ClipboardReadyDelayMs = 150;
@@ -24,6 +26,12 @@ internal static class FolderPathNativeHost
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr window);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr window);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
 
     [STAThread]
     public static void Main()
@@ -46,7 +54,7 @@ internal static class FolderPathNativeHost
                 bool openedInTab = TryOpenInExistingExplorerTab(path);
                 if (!openedInTab)
                 {
-                    Process.Start(new ProcessStartInfo("explorer.exe", Quote(path)) { UseShellExecute = false });
+                    OpenInNewExplorerWindow(path);
                 }
                 Write(output, "{\"ok\":true,\"openedInTab\":" + openedInTab.ToString().ToLowerInvariant() + "}");
             }
@@ -65,10 +73,16 @@ internal static class FolderPathNativeHost
         IntPtr explorerWindow = FindWindow("CabinetWClass", null);
         if (explorerWindow == IntPtr.Zero) return false;
 
-        if (!SetForegroundWindow(explorerWindow)) return false;
+        // Keystrokes sent while a minimized Explorer is being restored can create a Home tab
+        // without reaching its address bar. Use Explorer's command line instead; /n guarantees
+        // a separate window and lets Explorer itself navigate to the requested path.
+        if (IsIconic(explorerWindow)) return false;
+
+        if (!ActivateExplorerWindow(explorerWindow)) return false;
         Thread.Sleep(ExplorerActivationDelayMs);
         SendKeys.SendWait("^t");
         Thread.Sleep(NewTabReadyDelayMs);
+        if (!ActivateExplorerWindow(explorerWindow)) return false;
         SendKeys.SendWait("^l");
         Thread.Sleep(AddressBarReadyDelayMs);
 
@@ -102,6 +116,24 @@ internal static class FolderPathNativeHost
                 // Explorer has already received the path; clipboard restoration is best-effort.
             }
         }
+    }
+
+    private static bool ActivateExplorerWindow(IntPtr explorerWindow)
+    {
+        int waited = 0;
+        while (waited <= ExplorerFocusTimeoutMs)
+        {
+            SetForegroundWindow(explorerWindow);
+            if (GetForegroundWindow() == explorerWindow) return true;
+            Thread.Sleep(ExplorerFocusRetryMs);
+            waited += ExplorerFocusRetryMs;
+        }
+        return false;
+    }
+
+    private static void OpenInNewExplorerWindow(string path)
+    {
+        Process.Start(new ProcessStartInfo("explorer.exe", "/n," + Quote(path)) { UseShellExecute = false });
     }
 
     private static int GetWindowsBuildNumber()
