@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
@@ -19,6 +20,8 @@ internal static class FolderPathNativeHost
     private const int ExplorerRestoreSettleDelayMs = 700;
     private const int InputFocusTimeoutMs = 5000;
     private const int NewTabSettleDelayMs = 400;
+    private const int NewTabAppearsTimeoutMs = 5000;
+    private const int NavigationVerifyTimeoutMs = 3000;
     private const int AddressBarAttempts = 2;
     private const int AddressBarFocusTimeoutMs = 1500;
     private const int AddressBarReadyDelayMs = 500;
@@ -183,13 +186,29 @@ internal static class FolderPathNativeHost
         Thread.Sleep(ExplorerActivationDelayMs);
         if (!WaitForExplorerInputFocus(explorerWindow, "before opening a tab")) return false;
 
+        // Snapshot the open tabs first so the one Ctrl+T creates can be told apart afterwards.
+        List<object> tabsBefore = GetShellTabs();
+        List<IntPtr> identitiesBefore = GetComIdentities(tabsBefore);
+
         if (!SendToExplorer(explorerWindow, "^t")) return false;
-        if (!WaitForExplorerInputFocus(explorerWindow, "after opening a tab"))
+        bool inputReady = WaitForExplorerInputFocus(explorerWindow, "after opening a tab");
+        Thread.Sleep(NewTabSettleDelayMs);
+
+        // Navigating the new tab through the shell needs no keyboard focus at all, which is what
+        // kept failing right after a restore, so it runs even when the focus never settled. The
+        // keystroke route below stays as a fallback.
+        bool navigated = TryNavigateNewTab(explorerWindow, identitiesBefore, path);
+        GC.KeepAlive(tabsBefore);
+        if (navigated)
+        {
+            Log("navigation started through the shell");
+            return true;
+        }
+        if (!inputReady)
         {
             CloseUnusedTab(explorerWindow);
             return false;
         }
-        Thread.Sleep(NewTabSettleDelayMs);
 
         IntPtr addressBar = FocusAddressBar(explorerWindow);
         bool filled = addressBar != IntPtr.Zero
@@ -205,6 +224,151 @@ internal static class FolderPathNativeHost
         Thread.Sleep(NavigationStartDelayMs);
         Log("navigation started");
         return true;
+    }
+
+    // Every Explorer tab is its own shell browser, so the tab Ctrl+T just created can be found
+    // by comparing against the snapshot taken before the keystroke and then told to navigate.
+    // This replaces Ctrl+L, the clipboard paste and Enter, none of which survive an Explorer
+    // that is still initialising after being restored from the taskbar.
+    private static bool TryNavigateNewTab(IntPtr explorerWindow, List<IntPtr> identitiesBefore, string path)
+    {
+        object newTab = null;
+        WaitFor(NewTabAppearsTimeoutMs, delegate
+        {
+            List<object> tabs = GetShellTabs();
+            for (int index = 0; index < tabs.Count; index++)
+            {
+                if (GetShellTabWindow(tabs[index]) != explorerWindow) continue;
+                if (identitiesBefore.Contains(GetComIdentity(tabs[index]))) continue;
+                newTab = tabs[index];
+                return true;
+            }
+            return false;
+        });
+
+        if (newTab == null)
+        {
+            Log("the new tab did not appear in the shell window list");
+            return false;
+        }
+
+        try
+        {
+            InvokeMember(newTab, "Navigate2", BindingFlags.InvokeMethod, path);
+        }
+        catch (Exception exception)
+        {
+            Log("shell navigation failed: " + exception.Message);
+            return false;
+        }
+
+        // A slow network share can still be loading, so a timeout here is not a failure.
+        bool arrived = WaitFor(NavigationVerifyTimeoutMs, delegate
+        {
+            return PathsMatch(GetShellTabPath(newTab), path);
+        });
+        Log("shell navigation confirmed=" + arrived);
+        return true;
+    }
+
+    private static List<object> GetShellTabs()
+    {
+        var tabs = new List<object>();
+        try
+        {
+            Type shellType = Type.GetTypeFromProgID("Shell.Application");
+            if (shellType == null) return tabs;
+
+            object shell = Activator.CreateInstance(shellType);
+            object windows = InvokeMember(shell, "Windows", BindingFlags.InvokeMethod);
+            if (windows == null) return tabs;
+
+            int count = Convert.ToInt32(InvokeMember(windows, "Count", BindingFlags.GetProperty));
+            for (int index = 0; index < count; index++)
+            {
+                try
+                {
+                    object tab = InvokeMember(windows, "Item", BindingFlags.InvokeMethod, index);
+                    if (tab != null) tabs.Add(tab);
+                }
+                catch
+                {
+                    // A window can close while the collection is being walked.
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            Log("shell window list unavailable: " + exception.Message);
+        }
+        return tabs;
+    }
+
+    private static IntPtr GetShellTabWindow(object tab)
+    {
+        try
+        {
+            return new IntPtr(Convert.ToInt64(InvokeMember(tab, "HWND", BindingFlags.GetProperty)));
+        }
+        catch
+        {
+            return IntPtr.Zero;
+        }
+    }
+
+    private static string GetShellTabPath(object tab)
+    {
+        try
+        {
+            object document = InvokeMember(tab, "Document", BindingFlags.GetProperty);
+            object folder = InvokeMember(document, "Folder", BindingFlags.GetProperty);
+            object self = InvokeMember(folder, "Self", BindingFlags.GetProperty);
+            return Convert.ToString(InvokeMember(self, "Path", BindingFlags.GetProperty));
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private static bool PathsMatch(string left, string right)
+    {
+        return string.Equals(left.TrimEnd('\\'), right.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static object InvokeMember(object target, string member, BindingFlags flags, params object[] arguments)
+    {
+        return target.GetType().InvokeMember(member, flags, null, target, arguments);
+    }
+
+    private static List<IntPtr> GetComIdentities(List<object> items)
+    {
+        var identities = new List<IntPtr>();
+        for (int index = 0; index < items.Count; index++)
+        {
+            identities.Add(GetComIdentity(items[index]));
+        }
+        return identities;
+    }
+
+    // The caller keeps the wrappers alive, so releasing the reference this call adds still leaves
+    // the pointer valid and unique for as long as it is compared.
+    private static IntPtr GetComIdentity(object item)
+    {
+        IntPtr unknown = IntPtr.Zero;
+        try
+        {
+            unknown = Marshal.GetIUnknownForObject(item);
+            return unknown;
+        }
+        catch
+        {
+            return IntPtr.Zero;
+        }
+        finally
+        {
+            if (unknown != IntPtr.Zero) Marshal.Release(unknown);
+        }
     }
 
     // Explorer can own several windows and the topmost one may be minimized while another is
