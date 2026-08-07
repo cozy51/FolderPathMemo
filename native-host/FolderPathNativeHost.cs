@@ -14,7 +14,6 @@ internal static class FolderPathNativeHost
     private const int MaximumMessageBytes = 1024 * 1024;
     private const int Windows11ExplorerTabsBuild = 22621;
     private const int ExplorerActivationDelayMs = 400;
-    private const int ExplorerRestoreDelayMs = 1000;
     private const int ExplorerFocusTimeoutMs = 3000;
     private const int ExplorerFocusRetryMs = 100;
     private const int NewTabReadyDelayMs = 1500;
@@ -32,12 +31,7 @@ internal static class FolderPathNativeHost
     private static extern bool IsIconic(IntPtr window);
 
     [DllImport("user32.dll")]
-    private static extern bool ShowWindow(IntPtr window, int command);
-
-    [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
-
-    private const int ShowWindowRestore = 9;
 
     [STAThread]
     public static void Main()
@@ -60,7 +54,7 @@ internal static class FolderPathNativeHost
                 bool openedInTab = TryOpenInExistingExplorerTab(path);
                 if (!openedInTab)
                 {
-                    Process.Start(new ProcessStartInfo("explorer.exe", Quote(path)) { UseShellExecute = false });
+                    OpenInNewExplorerWindow(path);
                 }
                 Write(output, "{\"ok\":true,\"openedInTab\":" + openedInTab.ToString().ToLowerInvariant() + "}");
             }
@@ -78,6 +72,11 @@ internal static class FolderPathNativeHost
 
         IntPtr explorerWindow = FindWindow("CabinetWClass", null);
         if (explorerWindow == IntPtr.Zero) return false;
+
+        // Keystrokes sent while a minimized Explorer is being restored can create a Home tab
+        // without reaching its address bar. Use Explorer's command line instead; /n guarantees
+        // a separate window and lets Explorer itself navigate to the requested path.
+        if (IsIconic(explorerWindow)) return false;
 
         if (!ActivateExplorerWindow(explorerWindow)) return false;
         Thread.Sleep(ExplorerActivationDelayMs);
@@ -121,12 +120,6 @@ internal static class FolderPathNativeHost
 
     private static bool ActivateExplorerWindow(IntPtr explorerWindow)
     {
-        if (IsIconic(explorerWindow))
-        {
-            ShowWindow(explorerWindow, ShowWindowRestore);
-            Thread.Sleep(ExplorerRestoreDelayMs);
-        }
-
         int waited = 0;
         while (waited <= ExplorerFocusTimeoutMs)
         {
@@ -136,6 +129,11 @@ internal static class FolderPathNativeHost
             waited += ExplorerFocusRetryMs;
         }
         return false;
+    }
+
+    private static void OpenInNewExplorerWindow(string path)
+    {
+        Process.Start(new ProcessStartInfo("explorer.exe", "/n," + Quote(path)) { UseShellExecute = false });
     }
 
     private static int GetWindowsBuildNumber()
