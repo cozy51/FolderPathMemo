@@ -9,7 +9,7 @@
   <body>
     <header>
       <div class="brand"><img src="icons/icon.svg" alt="" /><div><h1>FolderPath Memo</h1><p>フォルダー一覧 <span id="appVersion" class="version-badge">v1.3.20</span></p></div></div>
-      <div class="header-actions"><button id="importButton" class="ghost-button" type="button">インポート</button><div class="backup-control"><button id="exportButton" class="ghost-button" type="button">バックアップ</button><span id="backupChangeCount" class="change-badge" title="前回バックアップからの変更件数">0</span></div><button id="addButton" class="primary-button" type="button">＋ 新規登録</button><input id="importInput" type="file" accept="application/json,.json" hidden /></div>
+      <div class="header-actions"><button id="importButton" class="ghost-button" type="button">インポート</button><div class="backup-control"><button id="exportButton" class="ghost-button" type="button">バックアップ</button><span id="backupChangeCount" class="change-badge" title="前回バックアップからの変更件数">0</span></div><button id="driveButton" class="ghost-button" type="button" title="Google Driveに保存・復元">Google Drive</button><button id="addButton" class="primary-button" type="button">＋ 新規登録</button><input id="importInput" type="file" accept="application/json,.json" hidden /></div>
     </header>
     <main>
       <section class="controls">
@@ -54,7 +54,31 @@
         <div class="dialog-actions"><button id="cancelTagButton" class="ghost-button" type="button">キャンセル</button><button class="primary-button" type="submit">保存する</button></div>
       </form>
     </dialog>
+    <dialog id="driveDialog" class="drive-dialog">
+      <div class="drive-content">
+        <div class="dialog-header"><div><p class="eyebrow">GOOGLE DRIVE</p><h2>Google Driveに保存</h2></div><button id="closeDriveDialog" class="close-button" type="button" aria-label="閉じる">×</button></div>
+        <p class="drive-status-row">状態: <span id="driveStatus" class="drive-status"></span></p>
+        <section class="drive-section">
+          <h3>バックアップ・復元</h3>
+          <p class="drive-hint">指定したGoogle Driveフォルダーにバックアップを保存します。<a id="driveFolderLink" target="_blank" rel="noopener">保存先フォルダーを開く</a></p>
+          <div class="drive-actions"><button id="driveBackupButton" class="primary-button" type="button">Google Driveに保存</button></div>
+          <div class="drive-restore-row"><select id="driveBackupSelect" aria-label="復元するバックアップ"></select><button id="loadDriveBackups" class="ghost-button" type="button">一覧を読み込む</button><button id="driveRestoreButton" class="ghost-button" type="button">復元</button></div>
+        </section>
+        <details class="drive-section drive-settings">
+          <summary>接続設定（初回のみ）</summary>
+          <ol class="drive-hint"><li>Google Cloud ConsoleでGoogle Drive APIを有効にし、OAuthクライアントID（種類: ウェブ アプリケーション）を作成</li><li>「承認済みのリダイレクトURI」に下のURIを登録</li><li>発行されたクライアントIDを貼り付けて保存し、「Googleに接続」を押す</li><li>保存先を変える場合は、フォルダーのURLまたはIDを入力して保存（空欄で既定のフォルダーに戻ります）</li></ol>
+          <label class="drive-label">リダイレクトURI</label>
+          <div class="drive-redirect-row"><code id="driveRedirectUrl"></code><button id="copyDriveRedirectUrl" class="ghost-button" type="button">コピー</button></div>
+          <label class="drive-label" for="driveFolderInput">保存先フォルダー（URLまたはID）</label>
+          <div class="drive-client-row"><input id="driveFolderInput" autocomplete="off" spellcheck="false" placeholder="保存先フォルダーのURLまたはID" aria-label="保存先フォルダー" /><button id="saveDriveFolder" class="ghost-button" type="button">保存</button></div>
+          <label class="drive-label" for="driveClientIdInput">OAuthクライアントID</label>
+          <div class="drive-client-row"><input id="driveClientIdInput" autocomplete="off" spellcheck="false" placeholder="xxxxxxxx.apps.googleusercontent.com" /><button id="saveDriveClientId" class="ghost-button" type="button">保存</button></div>
+          <div class="drive-actions"><button id="connectDrive" class="ghost-button" type="button">Googleに接続</button><button id="disconnectDrive" class="ghost-button" type="button">接続を解除</button></div>
+        </details>
+      </div>
+    </dialog>
     <div id="toast" class="toast" role="status"></div>
+    <script src="drive-ui.js"></script>
     <script src="library.js"></script>
   </body>
 </html>

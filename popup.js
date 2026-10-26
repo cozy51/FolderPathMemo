@@ -270,21 +270,28 @@ $('#copySetupCommand').onclick = async () => {
   showToast('セットアップコマンドをコピーしました');
 };
 
+function buildBackup() {
+  return { filename: backupFilename(), content: JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), items: state.items, tagSortKeys: state.tagSortKeys }, null, 2), signatures: makeSignatures() };
+}
+async function markBackedUp(signatures) { state.backupSignatures = signatures; await storage.set({ folderPathBackupState: state.backupSignatures }); updateBackupCount(); }
+async function applyBackup(data) {
+  if (!Array.isArray(data?.items) || data.items.some((item) => typeof item.name !== 'string' || typeof item.path !== 'string')) throw new Error('バックアップファイルを読み込めませんでした');
+  state.items = data.items.map((item) => { const updatedAt = Number(item.updatedAt) || Date.now(); return { id: item.id || crypto.randomUUID(), name: item.name, path: item.path, memo: typeof item.memo === 'string' ? item.memo : '', tags: Array.isArray(item.tags) ? item.tags : [], favorite: Boolean(item.favorite), createdAt: Number(item.createdAt) || updatedAt, updatedAt, files: normalizeFiles(item.files), lastOpenedAt: Number(item.lastOpenedAt) || 0, openCount: Number(item.openCount) || 0 }; });
+  state.tagSortKeys = data.tagSortKeys && typeof data.tagSortKeys === 'object' ? data.tagSortKeys : {};
+  await persist(); render(); showToast(`${state.items.length}件を復元しました`);
+}
+
 $('#exportButton').onclick = async () => {
-  const blob = new Blob([JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), items: state.items, tagSortKeys: state.tagSortKeys }, null, 2)], { type: 'application/json' });
-  const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = backupFilename(); link.click(); URL.revokeObjectURL(link.href);
-  state.backupSignatures = makeSignatures(); await storage.set({ folderPathBackupState: state.backupSignatures }); updateBackupCount(); showToast('バックアップを作成しました');
+  const { filename, content, signatures } = buildBackup();
+  const blob = new Blob([content], { type: 'application/json' });
+  const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = filename; link.click(); URL.revokeObjectURL(link.href);
+  await markBackedUp(signatures); showToast('バックアップを作成しました');
 };
 $('#importButton').onclick = () => $('#importInput').click();
 $('#importInput').onchange = async (event) => {
-  try {
-    const data = JSON.parse(await event.target.files[0].text());
-    if (!Array.isArray(data.items) || data.items.some((item) => typeof item.name !== 'string' || typeof item.path !== 'string')) throw new Error('invalid');
-    state.items = data.items.map((item) => { const updatedAt = Number(item.updatedAt) || Date.now(); return { id: item.id || crypto.randomUUID(), name: item.name, path: item.path, memo: typeof item.memo === 'string' ? item.memo : '', tags: Array.isArray(item.tags) ? item.tags : [], favorite: Boolean(item.favorite), createdAt: Number(item.createdAt) || updatedAt, updatedAt, files: normalizeFiles(item.files), lastOpenedAt: Number(item.lastOpenedAt) || 0, openCount: Number(item.openCount) || 0 }; });
-    state.tagSortKeys = data.tagSortKeys && typeof data.tagSortKeys === 'object' ? data.tagSortKeys : {};
-    await persist(); render(); showToast(`${state.items.length}件を復元しました`);
-  } catch { showToast('バックアップファイルを読み込めませんでした'); }
+  try { await applyBackup(JSON.parse(await event.target.files[0].text())); } catch { showToast('バックアップファイルを読み込めませんでした'); }
   event.target.value = '';
 };
+if (globalThis.chrome?.runtime?.id) setupDriveDialog({ buildBackup, markBackedUp, applyBackup, showToast });
 
 (async () => { const saved = await storage.get(['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState']); state.items = Array.isArray(saved.folderPaths) ? saved.folderPaths : []; state.tagSortKeys = saved.folderPathTagSortKeys && typeof saved.folderPathTagSortKeys === 'object' ? saved.folderPathTagSortKeys : {}; state.backupSignatures = saved.folderPathBackupState && typeof saved.folderPathBackupState === 'object' ? saved.folderPathBackupState : {}; render(); updateBackupCount(); })();
