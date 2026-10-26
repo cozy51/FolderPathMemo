@@ -94,17 +94,23 @@ async function driveFetch(url, options = {}, retried = false) {
   return response.json();
 }
 
+let pendingAuth = null;
+
 async function getDriveToken({ forceInteractive = false } = {}) {
   if (!forceInteractive) {
     const { folderPathDriveToken: cached } = await chrome.storage.session.get('folderPathDriveToken');
     if (cached && cached.expiresAt - 60000 > Date.now()) return cached.accessToken;
   }
-  const { folderPathDriveClientId: clientId } = await chrome.storage.local.get('folderPathDriveClientId');
-  if (!clientId) throw new Error('Google DriveのクライアントIDが未設定です。Drive設定から登録してください。');
-  let token = forceInteractive ? null : await authorize(clientId, false).catch(() => null);
-  token ??= await authorize(clientId, true);
-  await chrome.storage.session.set({ folderPathDriveToken: token });
-  return token.accessToken;
+  // launchWebAuthFlowは同時に1つしか動かせないため、進行中の認証があればその結果を待つ
+  pendingAuth ??= (async () => {
+    const { folderPathDriveClientId: clientId } = await chrome.storage.local.get('folderPathDriveClientId');
+    if (!clientId) throw new Error('Google DriveのクライアントIDが未設定です。Drive設定から登録してください。');
+    let token = forceInteractive ? null : await authorize(clientId, false).catch(() => null);
+    token ??= await authorize(clientId, true);
+    await chrome.storage.session.set({ folderPathDriveToken: token });
+    return token.accessToken;
+  })().finally(() => { pendingAuth = null; });
+  return pendingAuth;
 }
 
 async function authorize(clientId, interactive) {
@@ -114,6 +120,7 @@ async function authorize(clientId, interactive) {
   try {
     responseUrl = await chrome.identity.launchWebAuthFlow({ url: `https://accounts.google.com/o/oauth2/v2/auth?${params}`, interactive });
   } catch (error) {
+    if (/only one web auth flow/i.test(error.message)) throw new Error('Googleのログイン画面が開いたままです。その画面を閉じてから、もう一度お試しください。');
     throw new Error(`Googleへの接続がキャンセルされたか、失敗しました（${error.message}）`);
   }
   const result = new URLSearchParams(new URL(responseUrl).hash.slice(1));
