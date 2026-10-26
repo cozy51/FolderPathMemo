@@ -151,7 +151,7 @@ async function applyBackup(data) { if (!Array.isArray(data?.items) || data.items
 $('#exportButton').onclick = async () => { const { filename, content, signatures } = buildBackup(); const blob = new Blob([content], { type: 'application/json' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = filename; link.click(); URL.revokeObjectURL(link.href); await markBackedUp(signatures); showToast('バックアップを作成しました'); };
 $('#importButton').onclick = () => $('#importInput').click();
 $('#importInput').onchange = async (event) => { try { await applyBackup(JSON.parse(await event.target.files[0].text())); } catch { showToast('バックアップを読み込めませんでした'); } event.target.value = ''; };
-setupDriveDialog({ buildBackup, markBackedUp, applyBackup, showToast });
+setupDriveDialog({ applyBackup, onBackupStateChanged: (signatures) => { state.backupSignatures = signatures; updateBackupCount(); }, showToast });
 (async () => { const saved = await chrome.storage.local.get(['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState']); state.items = Array.isArray(saved.folderPaths) ? saved.folderPaths : []; state.tagSortKeys = saved.folderPathTagSortKeys && typeof saved.folderPathTagSortKeys === 'object' ? saved.folderPathTagSortKeys : {}; state.backupSignatures = saved.folderPathBackupState && typeof saved.folderPathBackupState === 'object' ? saved.folderPathBackupState : {}; render(); updateBackupCount(); })();
 
 $('#appVersion').textContent = `v${chrome.runtime.getManifest().version}`;

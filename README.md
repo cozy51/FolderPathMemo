@@ -16,7 +16,7 @@ Google Chrome 向けの、フォルダーパスを素早く見つけて再利用
 - 🔤 タグ専用編集画面でタグ名・登録件数・並び替え用のよみがなや頭文字を管理
 - ↕️ 一覧画面を登録日時（新しい順）・パス順・フォルダ名順で並べ替え
 - 💾 `backup-ext_FolderPathMemo_YYYY-MM-DD_hhmm.json`形式のバックアップと復元
-- ☁️ バックアップをGoogle Drive（フォルダーIDで指定した`FolderPathMemo`フォルダー）へ保存し、Driveから選んで復元
+- ☁️ Google Drive（フォルダーIDで指定した`FolderPathMemo`フォルダー）の1ファイルに最新版を上書き保存し、複数のPCで同期
 - 🔴 前回バックアップ後に追加・編集・削除・利用履歴が変更された件数をボタン横に表示
 - 📑 登録件数が多いときに使える、Chromeの新しいタブで開く高密度な一覧画面
 - 🔢 ファイル登録があるフォルダーだけに表示される件数バッジ（ポップアップでは「X件」の省スペース表示）
@@ -131,7 +131,13 @@ Test-Path .\native-host\install.ps1
 
 ## Google Driveへの保存
 
-ポップアップの「Drive」ボタン（一覧画面では「Google Drive」ボタン）から、バックアップをGoogle Driveへ直接保存・復元できます。保存先は既定でGoogle Driveの[FolderPathMemoフォルダー](https://drive.google.com/drive/folders/1u6N_eEqh7PDCpA4Fm8gqXYJmHMPl-SDv)（フォルダーIDで指定）で、ファイル名は通常のバックアップと同じ`backup-ext_FolderPathMemo_YYYY-MM-DD_hhmm.json`です。保存先はDriveダイアログの「接続設定」でフォルダーのURLまたはIDを入力して変更できます。既存フォルダーへ書き込むため、Googleへの接続時には`drive`（Google Driveの表示・編集）権限を要求します。
+ポップアップの「Drive」ボタン（一覧画面では「Google Drive」ボタン）から、登録内容をGoogle Driveと同期できます。保存先は既定でGoogle Driveの[FolderPathMemoフォルダー](https://drive.google.com/drive/folders/1u6N_eEqh7PDCpA4Fm8gqXYJmHMPl-SDv)（フォルダーIDで指定）です。保存先はDriveダイアログの「接続設定」でフォルダーのURLまたはIDを入力して変更できます。既存フォルダーへ書き込むため、Googleへの接続時には`drive`（Google Driveの表示・編集）権限を要求します。
+
+Driveには`backup-ext_FolderPathMemo.json`という1ファイルだけを置き、保存のたびに上書きします（日時付きのファイルは増えません）。
+
+- **Driveに保存（上書き）**：この端末の内容でDriveのファイルを上書きします。ほかの端末がDriveを更新していた場合は、上書きしてよいか確認します。
+- **Driveから読み込む**：Driveの最新版で、この端末の登録内容を置き換えます。
+- **自動で同期する**：オンにすると、登録内容を変更したときに自動でDriveへ保存し、ポップアップや一覧画面を開いたときにDriveの方が新しければ自動で読み込みます。Driveとこの端末の両方に変更がある場合は、どちらも上書きせずに案内を表示するので、Driveダイアログで保存か読み込みを選んでください。自動同期はログイン画面を出さずに接続できるときだけ動きます。
 
 拡張機能にはGoogleのクライアントIDが含まれていないため、初回だけ次の設定が必要です。
 
@@ -141,7 +147,7 @@ Test-Path .\native-host\install.ps1
 4. 「承認済みのリダイレクトURI」に、Driveダイアログの「接続設定」に表示される`https://<拡張機能ID>.chromiumapp.org/`を登録します。
 5. 発行されたクライアントIDをDriveダイアログに貼り付けて「保存」し、「Googleに接続」を押してログインします。
 
-接続後は「Google Driveに保存」でアップロード、「一覧を読み込む」→バックアップを選択→「復元」でDriveから復元できます。ログイン状態はChromeを閉じるまで保持され、再起動後は保存時に自動で再接続します（必要な場合だけログイン画面が開きます）。
+ログイン状態はChromeを閉じるまで保持され、再起動後は保存時に自動で再接続します（必要な場合だけログイン画面が開きます）。
 
 > ポップアップは別ウィンドウ（Googleのログイン画面）が開くと閉じてしまいます。初回の「Googleに接続」は一覧画面から行うと確実です。ポップアップが閉じても保存処理自体は続行されます。
 
