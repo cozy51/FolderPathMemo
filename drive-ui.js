@@ -14,10 +14,38 @@ function setupDriveDialog({ applyBackup, onBackupStateChanged, showToast }) {
     try { await task(); } catch (error) { showToast(error.message); } finally { button.disabled = false; }
   };
   const formatTime = (time) => time ? new Date(time).toLocaleString() : '';
+  const driveButton = document.querySelector('#driveButton');
+  const buttonLabel = driveButton.textContent.trim();
+  const syncStates = {
+    unconfigured: { label: '未設定', title: 'Google Driveの接続設定がまだです。クリックして設定してください' },
+    disconnected: { label: '未接続', title: 'Google Driveに接続されていません。クリックすると接続します' },
+    syncing: { label: '同期中', title: 'Google Driveと同期しています' },
+    pending: { label: '未同期', title: 'Google Driveにまだ反映されていない変更があります' },
+    synced: { label: '同期済み', title: 'Google Driveと同期済みです' },
+    conflict: { label: '要確認', title: 'Driveとこの端末の両方に変更があります。クリックして保存か読み込みを選んでください' },
+    error: { label: 'エラー', title: 'Google Driveとの同期に失敗しました' }
+  };
+  let syncState = 'unconfigured';
+
+  // Driveボタン自体に接続・同期の状態を表示する
+  function renderSyncState(state, message = '') {
+    syncState = syncStates[state] ? state : 'error';
+    const info = syncStates[syncState];
+    const dot = document.createElement('span');
+    dot.className = 'drive-dot';
+    // 幅の狭いポップアップでは、対応が必要な状態だけ文字でも表示する
+    const compact = driveButton.dataset.compact !== undefined && ['syncing', 'pending', 'synced'].includes(syncState);
+    driveButton.replaceChildren(dot, document.createTextNode(compact ? buttonLabel : `${buttonLabel} ${info.label}`));
+    driveButton.dataset.syncState = syncState;
+    driveButton.title = message ? `${info.title}（${message}）` : info.title;
+  }
 
   // Driveでの保存やバックグラウンドの自動保存で、変更件数バッジを更新する
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes.folderPathBackupState) onBackupStateChanged(changes.folderPathBackupState.newValue ?? {});
+    if (area !== 'local') return;
+    if (changes.folderPathBackupState) onBackupStateChanged(changes.folderPathBackupState.newValue ?? {});
+    if (changes.folderPathDriveSyncStatus?.newValue) renderSyncState(changes.folderPathDriveSyncStatus.newValue.state, changes.folderPathDriveSyncStatus.newValue.message);
+    else if ((changes.folderPaths || changes.folderPathTagSortKeys) && syncState === 'synced') renderSyncState('pending');
   });
 
   async function loadFromDrive() {
@@ -66,14 +94,27 @@ function setupDriveDialog({ applyBackup, onBackupStateChanged, showToast }) {
       showToast('Google Driveの最新版を読み込みました');
     } else if (sync.remoteChanged) {
       showToast('Driveとこの端末の両方に変更があります。Driveボタンから保存か読み込みを選んでください');
-    } else if (sync.localChanged && await saveToDrive({ silent: true })) {
-      showToast('Google Driveに最新版を保存しました');
+    } else if (sync.localChanged) {
+      await saveToDrive({ silent: true });
     }
   }
 
-  document.querySelector('#driveButton').onclick = async () => {
+  async function openDialog() {
     dialog.showModal();
     try { await refresh(); } catch (error) { showToast(error.message); }
+  }
+  driveButton.onclick = async () => {
+    if (syncState !== 'disconnected') return openDialog();
+    // 未接続のときは、ボタン1回でGoogleに接続して同期する
+    showToast('Google Driveに接続しています…');
+    try {
+      await send('drive_connect');
+      showToast('Google Driveに接続しました');
+      await syncOnOpen();
+    } catch (error) {
+      showToast(error.message);
+      openDialog();
+    }
   };
   document.querySelector('#closeDriveDialog').onclick = () => dialog.close();
   document.querySelector('#copyDriveRedirectUrl').onclick = async () => {
@@ -116,5 +157,10 @@ function setupDriveDialog({ applyBackup, onBackupStateChanged, showToast }) {
     await refresh();
   });
 
-  syncOnOpen().catch(() => {});
+  (async () => {
+    const saved = await chrome.storage.local.get(['folderPathDriveClientId', 'folderPathDriveSyncStatus']);
+    if (!saved.folderPathDriveClientId) return renderSyncState('unconfigured');
+    renderSyncState(saved.folderPathDriveSyncStatus?.state ?? 'disconnected', saved.folderPathDriveSyncStatus?.message);
+    await syncOnOpen();
+  })().catch(() => {});
 }
