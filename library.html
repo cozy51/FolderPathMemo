@@ -9,7 +9,7 @@
   <body>
     <header>
       <div class="brand"><img src="icons/icon.svg" alt="" /><div><h1>FolderPath Memo</h1><p>フォルダー一覧 <span id="appVersion" class="version-badge">v1.3.20</span></p></div></div>
-      <div class="header-actions"><button id="importButton" class="ghost-button" type="button">インポート</button><div class="backup-control"><button id="exportButton" class="ghost-button" type="button">バックアップ</button><span id="backupChangeCount" class="change-badge" title="前回バックアップからの変更件数">0</span></div><button id="driveButton" class="ghost-button" type="button" title="Google Driveに保存・復元">Google Drive</button><button id="addButton" class="primary-button" type="button">＋ 新規登録</button><input id="importInput" type="file" accept="application/json,.json" hidden /></div>
+      <div class="header-actions"><button id="importButton" class="ghost-button" type="button">インポート</button><div class="backup-control"><button id="exportButton" class="ghost-button" type="button">バックアップ</button><span id="backupChangeCount" class="change-badge" title="前回バックアップからの変更件数">0</span></div><button id="driveButton" class="ghost-button" type="button" title="Google Driveと同期">Google Drive</button><button id="addButton" class="primary-button" type="button">＋ 新規登録</button><input id="importInput" type="file" accept="application/json,.json" hidden /></div>
     </header>
     <main>
       <section class="controls">
@@ -56,13 +56,14 @@
     </dialog>
     <dialog id="driveDialog" class="drive-dialog">
       <div class="drive-content">
-        <div class="dialog-header"><div><p class="eyebrow">GOOGLE DRIVE</p><h2>Google Driveに保存</h2></div><button id="closeDriveDialog" class="close-button" type="button" aria-label="閉じる">×</button></div>
+        <div class="dialog-header"><div><p class="eyebrow">GOOGLE DRIVE</p><h2>Google Driveと同期</h2></div><button id="closeDriveDialog" class="close-button" type="button" aria-label="閉じる">×</button></div>
         <p class="drive-status-row">状態: <span id="driveStatus" class="drive-status"></span></p>
         <section class="drive-section">
-          <h3>バックアップ・復元</h3>
-          <p class="drive-hint">指定したGoogle Driveフォルダーにバックアップを保存します。<a id="driveFolderLink" target="_blank" rel="noopener">保存先フォルダーを開く</a></p>
-          <div class="drive-actions"><button id="driveBackupButton" class="primary-button" type="button">Google Driveに保存</button></div>
-          <div class="drive-restore-row"><select id="driveBackupSelect" aria-label="復元するバックアップ"></select><button id="loadDriveBackups" class="ghost-button" type="button">一覧を読み込む</button><button id="driveRestoreButton" class="ghost-button" type="button">復元</button></div>
+          <h3>同期</h3>
+          <p class="drive-hint">指定したGoogle Driveフォルダーの「<span id="driveFileName"></span>」1ファイルに、最新版を上書き保存します。<a id="driveFolderLink" target="_blank" rel="noopener">保存先フォルダーを開く</a></p>
+          <p id="driveRemoteInfo" class="drive-remote-info"></p>
+          <div class="drive-actions"><button id="driveSaveButton" class="primary-button" type="button">Driveに保存（上書き）</button><button id="driveLoadButton" class="ghost-button" type="button">Driveから読み込む</button></div>
+          <label class="drive-auto"><input id="driveAutoSync" type="checkbox" /> 自動で同期する（変更するとDriveへ保存し、画面を開いたときにDriveの新しい版を読み込みます）</label>
         </section>
         <details class="drive-section drive-settings">
           <summary>接続設定（初回のみ）</summary>

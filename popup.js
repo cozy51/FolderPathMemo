@@ -292,6 +292,6 @@ $('#importInput').onchange = async (event) => {
   try { await applyBackup(JSON.parse(await event.target.files[0].text())); } catch { showToast('バックアップファイルを読み込めませんでした'); }
   event.target.value = '';
 };
-if (globalThis.chrome?.runtime?.id) setupDriveDialog({ buildBackup, markBackedUp, applyBackup, showToast });
+if (globalThis.chrome?.runtime?.id) setupDriveDialog({ applyBackup, onBackupStateChanged: (signatures) => { state.backupSignatures = signatures; updateBackupCount(); }, showToast });
 
 (async () => { const saved = await storage.get(['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState']); state.items = Array.isArray(saved.folderPaths) ? saved.folderPaths : []; state.tagSortKeys = saved.folderPathTagSortKeys && typeof saved.folderPathTagSortKeys === 'object' ? saved.folderPathTagSortKeys : {}; state.backupSignatures = saved.folderPathBackupState && typeof saved.folderPathBackupState === 'object' ? saved.folderPathBackupState : {}; render(); updateBackupCount(); })();
