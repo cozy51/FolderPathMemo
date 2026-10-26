@@ -29,7 +29,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 const driveHandlers = {
   async drive_status() {
-    const { folderPathDriveClientId: clientId = '', folderPathDriveAutoSync: autoSync = false } = await chrome.storage.local.get(['folderPathDriveClientId', 'folderPathDriveAutoSync']);
+    const { folderPathDriveClientId: clientId = '', folderPathDriveAutoSync: autoSync = true } = await chrome.storage.local.get(['folderPathDriveClientId', 'folderPathDriveAutoSync']);
     const { folderPathDriveToken: token } = await chrome.storage.session.get('folderPathDriveToken');
     return { clientId, autoSync, fileName: DRIVE_SYNC_FILE_NAME, folderId: await getBackupFolderId(), redirectUrl: chrome.identity.getRedirectURL(), connected: Boolean(token && token.expiresAt > Date.now()) };
   },
@@ -44,17 +44,22 @@ const driveHandlers = {
     return { folderId: await getBackupFolderId() };
   },
   async drive_save_client_id({ clientId }) {
-    await chrome.storage.local.set({ folderPathDriveClientId: String(clientId ?? '').trim() });
+    const value = String(clientId ?? '').trim();
+    await chrome.storage.local.set({ folderPathDriveClientId: value });
     await chrome.storage.session.remove('folderPathDriveToken');
+    await setSyncStatus(value ? 'disconnected' : 'unconfigured');
     return {};
   },
   async drive_connect() {
     await getDriveToken({ forceInteractive: true });
+    // 接続できたら、未保存の変更をすぐDriveへ送る
+    autoSave().catch(() => {});
     return {};
   },
   async drive_disconnect() {
     const { folderPathDriveToken: token } = await chrome.storage.session.get('folderPathDriveToken');
     await chrome.storage.session.remove('folderPathDriveToken');
+    await setSyncStatus('disconnected');
     if (token?.accessToken) await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token.accessToken)}`, { method: 'POST' }).catch(() => {});
     return {};
   },
@@ -63,10 +68,20 @@ const driveHandlers = {
     return {};
   },
   async drive_sync_check({ silent = true } = {}) {
-    return syncCheck({ silent });
+    const status = await syncCheck({ silent }).catch(async (error) => { await setSyncStatus('error', error.message); throw error; });
+    await setSyncStatus(!status.connected ? 'disconnected' : status.remoteChanged && status.localChanged ? 'conflict' : status.remoteChanged || status.localChanged ? 'pending' : 'synced');
+    return status;
   },
   async drive_save({ force = false, silent = false } = {}) {
-    return saveToDrive({ force, silent });
+    await setSyncStatus('syncing');
+    try {
+      const result = await saveToDrive({ force, silent });
+      await setSyncStatus(result.conflict ? 'conflict' : 'synced');
+      return result;
+    } catch (error) {
+      await setSyncStatus(error.message === NOT_CONNECTED ? 'disconnected' : 'error', error.message);
+      throw error;
+    }
   },
   async drive_load() {
     const file = await findSyncFile({});
@@ -78,9 +93,15 @@ const driveHandlers = {
     // 読み込んだ内容をページが保存した後に呼ばれる。保存済みの内容を同期済みとして記録する
     const signatures = makeSignatures(await chrome.storage.local.get(['folderPaths', 'folderPathTagSortKeys']));
     await chrome.storage.local.set({ folderPathDriveSyncedAt: modifiedTime, folderPathDriveSyncState: signatures, folderPathBackupState: signatures });
+    await setSyncStatus('synced');
     return {};
   }
 };
+
+// 同期の状態はページのDriveボタンに表示するため storage.local に置く
+async function setSyncStatus(state, message = '') {
+  await chrome.storage.local.set({ folderPathDriveSyncStatus: { state, message, at: Date.now() } });
+}
 
 // 登録内容が変わったら、自動同期が有効なときだけDriveの同期ファイルを上書きする
 let autoSaveTimer;
@@ -90,12 +111,28 @@ chrome.storage.onChanged.addListener((changes, area) => {
   autoSaveTimer = setTimeout(() => autoSave().catch(() => {}), 2000);
 });
 
+// 一時的なエラーや期限切れで同期できなかった変更を、15分ごとに送り直す
+chrome.alarms.create('folderPathDriveRetry', { periodInMinutes: 15 });
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name !== 'folderPathDriveRetry') return;
+  const { folderPathDriveSyncStatus: status } = await chrome.storage.local.get('folderPathDriveSyncStatus');
+  if (status && status.state !== 'synced' && status.state !== 'unconfigured') autoSave().catch(() => {});
+});
+
 async function autoSave() {
   const { folderPathDriveAutoSync: enabled, folderPathDriveClientId: clientId } = await chrome.storage.local.get(['folderPathDriveAutoSync', 'folderPathDriveClientId']);
-  if (!enabled || !clientId) return;
-  const status = await syncCheck({ silent: true });
-  // 他の端末がDriveを更新していたら上書きせず、次に画面を開いたときに利用者へ選んでもらう
-  if (status.connected && status.localChanged && !status.remoteChanged) await saveToDrive({ silent: true });
+  if (enabled === false || !clientId) return;
+  await setSyncStatus('syncing');
+  try {
+    const status = await syncCheck({ silent: true });
+    if (!status.connected) return setSyncStatus('disconnected');
+    // 他の端末がDriveを更新していたら上書きせず、利用者に選んでもらう
+    if (status.remoteChanged) return setSyncStatus(status.localChanged ? 'conflict' : 'pending');
+    if (status.localChanged) await saveToDrive({ silent: true });
+    await setSyncStatus('synced');
+  } catch (error) {
+    await setSyncStatus('error', error.message);
+  }
 }
 
 function makeSignatures({ folderPaths, folderPathTagSortKeys }) {
@@ -116,12 +153,12 @@ async function syncCheck({ silent }) {
   try {
     file = await findSyncFile({ silent });
   } catch (error) {
-    if (silent && error.message === NOT_CONNECTED) return { connected: false, autoSync: Boolean(saved.folderPathDriveAutoSync) };
+    if (silent && error.message === NOT_CONNECTED) return { connected: false, autoSync: saved.folderPathDriveAutoSync !== false };
     throw error;
   }
   return {
     connected: true,
-    autoSync: Boolean(saved.folderPathDriveAutoSync),
+    autoSync: saved.folderPathDriveAutoSync !== false,
     exists: Boolean(file),
     modifiedTime: file?.modifiedTime ?? '',
     remoteChanged: Boolean(file) && file.modifiedTime !== saved.folderPathDriveSyncedAt,
@@ -209,7 +246,8 @@ async function authorize(clientId, interactive) {
   if (!interactive) params.set('prompt', 'none');
   let responseUrl;
   try {
-    responseUrl = await chrome.identity.launchWebAuthFlow({ url: `https://accounts.google.com/o/oauth2/v2/auth?${params}`, interactive });
+    // ログイン画面なしの再接続では、Googleのリダイレクトが終わるまで最大10秒待つ
+    responseUrl = await chrome.identity.launchWebAuthFlow({ url: `https://accounts.google.com/o/oauth2/v2/auth?${params}`, interactive, ...(interactive ? {} : { abortOnLoadForNonInteractive: false, timeoutMsForNonInteractive: 10000 }) });
   } catch (error) {
     if (/only one web auth flow/i.test(error.message)) throw new Error('Googleのログイン画面が開いたままです。その画面を閉じてから、もう一度お試しください。');
     throw new Error(`Googleへの接続がキャンセルされたか、失敗しました（${error.message}）`);
