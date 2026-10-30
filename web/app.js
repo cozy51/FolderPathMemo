@@ -1,5 +1,5 @@
-const APP_VERSION = '2.0.1';
-const state = { items: [], query: '', view: 'all', tag: '', sort: 'registered-desc', tagSortKeys: {}, backupSignatures: {} };
+const APP_VERSION = '2.1.0';
+const state = { items: [], query: '', view: 'all', tag: '', sort: 'registered-desc', tagSortKeys: {}, backupSignatures: {}, batchPaths: [], batchKeepTabs: true };
 const $ = (selector) => document.querySelector(selector);
 const dialog = $('#pathDialog');
 let nameAutoFill = true;
@@ -12,9 +12,9 @@ function fuzzyMatch(text, query) {
   for (const char of query.trim().toLocaleLowerCase()) { index = source.indexOf(char, index); if (index < 0) return false; index += 1; }
   return true;
 }
-function showToast(message) { const toast = $('#toast'); toast.textContent = message; toast.classList.add('show'); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.classList.remove('show'), 1600); }
-async function persist() { await store.set({ folderPaths: state.items, folderPathTagSortKeys: state.tagSortKeys }); updateBackupCount(); }
-function makeSignatures() { const signatures = Object.fromEntries(state.items.map((item) => [item.id, JSON.stringify(item)])); if (Object.keys(state.tagSortKeys).length) signatures.__tagSortKeys = JSON.stringify(state.tagSortKeys); return signatures; }
+function showToast(message) { const toast = $('#toast'); const host = document.querySelector('dialog[open]') ?? document.body; if (toast.parentElement !== host) host.append(toast); toast.textContent = message; toast.classList.add('show'); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.classList.remove('show'), 1600); }
+async function persist() { await store.set({ folderPaths: state.items, folderPathTagSortKeys: state.tagSortKeys, folderPathBatchOpen: state.batchPaths }); updateBackupCount(); }
+function makeSignatures() { const signatures = Object.fromEntries(state.items.map((item) => [item.id, JSON.stringify(item)])); if (Object.keys(state.tagSortKeys).length) signatures.__tagSortKeys = JSON.stringify(state.tagSortKeys); if (state.batchPaths.length) signatures.__batchOpen = JSON.stringify(state.batchPaths); return signatures; }
 function updateBackupCount() { const current = makeSignatures(); const ids = new Set([...Object.keys(current), ...Object.keys(state.backupSignatures)]); const count = [...ids].filter((id) => current[id] !== state.backupSignatures[id]).length; const badge = $('#backupChangeCount'); badge.textContent = count; badge.classList.toggle('clean', count === 0); badge.title = `前回バックアップから ${count} 件変更`; }
 function normalizeFiles(files) { return Array.isArray(files) ? files.map((file) => ({ name: String(file.name ?? '').trim(), memo: String(file.memo ?? '').trim() })).filter((file) => file.name || file.memo) : []; }
 function fileTypeInfo(filename) {
@@ -148,14 +148,56 @@ $('#tagForm').onsubmit = async (event) => {
   if (state.tag) state.tag = renamed[state.tag] ?? state.tag; await persist(); $('#tagDialog').close(); render(); showToast('タグを更新しました');
 };
 document.querySelectorAll('.view-tab').forEach((button) => button.onclick = () => { state.view = button.dataset.view; document.querySelectorAll('.view-tab').forEach((tab) => tab.classList.toggle('active', tab === button)); render(); });
-function buildBackup() { return { filename: backupFilename(), content: JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), items: state.items, tagSortKeys: state.tagSortKeys }, null, 2), signatures: makeSignatures() }; }
+function buildBackup() { return { filename: backupFilename(), content: JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), items: state.items, tagSortKeys: state.tagSortKeys, batchOpen: state.batchPaths }, null, 2), signatures: makeSignatures() }; }
 async function markBackedUp(signatures) { state.backupSignatures = signatures; await store.set({ folderPathBackupState: state.backupSignatures }); updateBackupCount(); }
-async function applyBackup(data) { if (!Array.isArray(data?.items) || data.items.some((item) => typeof item.name !== 'string' || typeof item.path !== 'string')) throw new Error('バックアップを読み込めませんでした'); state.items = data.items.map((item) => { const updatedAt = Number(item.updatedAt) || Date.now(); return { id: item.id || crypto.randomUUID(), name: item.name, path: item.path, memo: typeof item.memo === 'string' ? item.memo : '', tags: Array.isArray(item.tags) ? item.tags : [], favorite: Boolean(item.favorite), createdAt: Number(item.createdAt) || updatedAt, updatedAt, files: normalizeFiles(item.files), lastOpenedAt: Number(item.lastOpenedAt) || 0, openCount: Number(item.openCount) || 0 }; }); state.tagSortKeys = data.tagSortKeys && typeof data.tagSortKeys === 'object' ? data.tagSortKeys : {}; await persist(); render(); showToast(`${state.items.length}件を復元しました`); }
+async function applyBackup(data) { if (!Array.isArray(data?.items) || data.items.some((item) => typeof item.name !== 'string' || typeof item.path !== 'string')) throw new Error('バックアップを読み込めませんでした'); state.items = data.items.map((item) => { const updatedAt = Number(item.updatedAt) || Date.now(); return { id: item.id || crypto.randomUUID(), name: item.name, path: item.path, memo: typeof item.memo === 'string' ? item.memo : '', tags: Array.isArray(item.tags) ? item.tags : [], favorite: Boolean(item.favorite), createdAt: Number(item.createdAt) || updatedAt, updatedAt, files: normalizeFiles(item.files), lastOpenedAt: Number(item.lastOpenedAt) || 0, openCount: Number(item.openCount) || 0 }; }); state.tagSortKeys = data.tagSortKeys && typeof data.tagSortKeys === 'object' ? data.tagSortKeys : {}; if (Array.isArray(data.batchOpen)) state.batchPaths = normalizeBatchPaths(data.batchOpen); await persist(); render(); showToast(`${state.items.length}件を復元しました`); }
 $('#exportButton').onclick = async () => { const { filename, content, signatures } = buildBackup(); const blob = new Blob([content], { type: 'application/json' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = filename; link.click(); URL.revokeObjectURL(link.href); await markBackedUp(signatures); showToast('バックアップを作成しました'); };
 $('#importButton').onclick = () => $('#importInput').click();
 $('#importInput').onchange = async (event) => { try { await applyBackup(JSON.parse(await event.target.files[0].text())); } catch { showToast('バックアップを読み込めませんでした'); } event.target.value = ''; };
+// まとめて開く：登録したフォルダーを上から順にエクスプローラーのタブで開く（並び順はDrive・バックアップにも保存する）
+function normalizeBatchPaths(paths) { return Array.isArray(paths) ? paths.map((path) => String(path ?? '').trim()).filter(Boolean) : []; }
+async function saveBatchPaths() { state.batchPaths = normalizeBatchPaths(state.batchPaths); await persist(); }
+function renderBatchRows() {
+  const paths = state.batchPaths;
+  $('#batchRows').replaceChildren(...paths.map((path, index) => {
+    const row = document.createElement('li'); row.className = 'batch-row';
+    const input = document.createElement('input'); input.className = 'batch-path-input'; input.value = path; input.maxLength = 500; input.setAttribute('list', 'batchPathOptions'); input.title = state.items.find((item) => item.path === path)?.name ?? path; input.setAttribute('aria-label', `${index + 1}番目のフォルダーパス`);
+    input.onchange = async () => { const value = input.value.trim(); if (value) paths[index] = value; else paths.splice(index, 1); await saveBatchPaths(); renderBatchRows(); };
+    const button = (label, title, className, disabled, action) => { const element = document.createElement('button'); element.type = 'button'; element.textContent = label; element.title = title; element.className = className; element.disabled = disabled; element.onclick = async () => { action(); await saveBatchPaths(); renderBatchRows(); }; return element; };
+    const swap = (target) => { [paths[index], paths[target]] = [paths[target], paths[index]]; };
+    row.append(input, button('↑', '上へ', '', index === 0, () => swap(index - 1)), button('↓', '下へ', '', index === paths.length - 1, () => swap(index + 1)), button('×', '削除', 'batch-remove', false, () => paths.splice(index, 1)));
+    return row;
+  }));
+  $('#batchEmpty').hidden = paths.length > 0; $('#batchOpenButton').disabled = paths.length === 0;
+}
+function openBatchDialog() {
+  $('#batchPathOptions').replaceChildren(...[...state.items].sort((a, b) => a.name.localeCompare(b.name, 'ja')).map((item) => { const option = document.createElement('option'); option.value = item.path; option.label = item.name; return option; }));
+  $('#batchKeepTabs').checked = state.batchKeepTabs; $('#batchPathInput').value = ''; renderBatchRows(); $('#batchDialog').showModal(); $('#batchPathInput').focus();
+}
+async function addBatchPath() {
+  const path = $('#batchPathInput').value.trim(); if (!path) return;
+  if (state.batchPaths.some((existing) => existing.toLocaleLowerCase() === path.toLocaleLowerCase())) { showToast('すでに登録されています'); return; }
+  state.batchPaths.push(path); $('#batchPathInput').value = ''; await saveBatchPaths(); renderBatchRows();
+}
+async function openBatchFolders() {
+  const paths = [...state.batchPaths]; if (!paths.length) return;
+  $('#batchOpenButton').disabled = true; showToast(`${paths.length}件のフォルダーを開いています…`);
+  try {
+    const result = await openFoldersWithExtension(paths, { newWindow: !state.batchKeepTabs });
+    const opened = new Set(result.opened ?? paths); const now = Date.now();
+    state.items.filter((item) => opened.has(item.path)).forEach((item) => { item.lastOpenedAt = now; item.openCount = (item.openCount ?? 0) + 1; }); await persist(); render();
+    showToast(result.missing?.length ? `${opened.size}件を開きました（見つからないフォルダー：${result.missing.join('、')}）` : `${opened.size}件をタブで開きました`);
+  } catch (error) {
+    await navigator.clipboard.writeText(paths.join('\r\n')).catch(() => {});
+    showToast(await extensionReady ? `開けなかったためパスをコピーしました（${error.message}）` : 'パスをコピーしました（Explorerで開くには拡張機能が必要です）');
+  } finally { renderBatchRows(); }
+}
+$('#batchButton').onclick = openBatchDialog; $('#closeBatchDialog').onclick = $('#batchCloseButton').onclick = () => $('#batchDialog').close();
+$('#batchAddButton').onclick = addBatchPath; $('#batchPathInput').onkeydown = (event) => { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); addBatchPath(); } };
+$('#batchKeepTabs').onchange = (event) => { state.batchKeepTabs = event.target.checked; try { localStorage.setItem('folderPathBatchKeepTabs', String(state.batchKeepTabs)); } catch {} };
+$('#batchOpenButton').onclick = openBatchFolders;
 // 以前の拡張機能の画面で使っていたデータと設定。Webアプリに何も保存されていないときに一度だけ引き継ぐ
-const LEGACY_KEYS = ['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState', 'folderPathDriveClientId', 'folderPathDriveFolderId', 'folderPathDriveAutoSync', 'folderPathDriveSyncedAt', 'folderPathDriveSyncState'];
+const LEGACY_KEYS = ['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState', 'folderPathBatchOpen', 'folderPathDriveClientId', 'folderPathDriveFolderId', 'folderPathDriveAutoSync', 'folderPathDriveSyncedAt', 'folderPathDriveSyncState'];
 async function importLegacyData() {
   if ((await store.get('folderPaths')).folderPaths !== undefined) return false;
   const legacy = await loadLegacyExtensionData();
@@ -163,10 +205,10 @@ async function importLegacyData() {
   await store.set(Object.fromEntries(LEGACY_KEYS.filter((key) => legacy[key] !== undefined).map((key) => [key, legacy[key]])));
   return true;
 }
-(async () => { const imported = await importLegacyData(); if (imported) showToast('拡張機能に登録されていたデータを引き継ぎました'); const saved = await store.get(['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState']); state.items = Array.isArray(saved.folderPaths) ? saved.folderPaths : []; state.tagSortKeys = saved.folderPathTagSortKeys && typeof saved.folderPathTagSortKeys === 'object' ? saved.folderPathTagSortKeys : {}; state.backupSignatures = saved.folderPathBackupState && typeof saved.folderPathBackupState === 'object' ? saved.folderPathBackupState : {}; render(); updateBackupCount();
+(async () => { const imported = await importLegacyData(); if (imported) showToast('拡張機能に登録されていたデータを引き継ぎました'); const saved = await store.get(['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState', 'folderPathBatchOpen']); state.items = Array.isArray(saved.folderPaths) ? saved.folderPaths : []; state.tagSortKeys = saved.folderPathTagSortKeys && typeof saved.folderPathTagSortKeys === 'object' ? saved.folderPathTagSortKeys : {}; state.backupSignatures = saved.folderPathBackupState && typeof saved.folderPathBackupState === 'object' ? saved.folderPathBackupState : {}; state.batchPaths = normalizeBatchPaths(saved.folderPathBatchOpen); state.batchKeepTabs = localStorage.getItem('folderPathBatchKeepTabs') !== 'false'; render(); updateBackupCount();
   // 引き継いだDrive設定で同期を始めるよう、データの準備ができてから設定する
   setupDriveDialog({ applyBackup, onBackupStateChanged: (signatures) => { state.backupSignatures = signatures; updateBackupCount(); }, showToast }); })();
 
 // 別のタブで登録内容が変わったら、このタブの表示も合わせる
-window.addEventListener('storage', async (event) => { if (!['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState'].includes(event.key)) return; const saved = await store.get(['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState']); state.items = Array.isArray(saved.folderPaths) ? saved.folderPaths : []; state.tagSortKeys = saved.folderPathTagSortKeys ?? {}; state.backupSignatures = saved.folderPathBackupState ?? {}; render(); updateBackupCount(); });
+window.addEventListener('storage', async (event) => { if (!['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState', 'folderPathBatchOpen'].includes(event.key)) return; const saved = await store.get(['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState', 'folderPathBatchOpen']); state.items = Array.isArray(saved.folderPaths) ? saved.folderPaths : []; state.tagSortKeys = saved.folderPathTagSortKeys ?? {}; state.backupSignatures = saved.folderPathBackupState ?? {}; state.batchPaths = normalizeBatchPaths(saved.folderPathBatchOpen); render(); if ($('#batchDialog').open) renderBatchRows(); updateBackupCount(); });
 $('#appVersion').textContent = `v${APP_VERSION}`;
