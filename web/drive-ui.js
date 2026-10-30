@@ -1,14 +1,10 @@
-// ポップアップと一覧画面で共通のGoogle Drive設定ダイアログ。
-// Drive APIの呼び出しは、ポップアップが認証ウィンドウで閉じても続くよう background.js で行う。
+// Google Drive設定ダイアログ。Drive APIの呼び出しは drive.js の driveHandlers で行う。
 // Driveには1つの同期ファイルだけを置き、保存のたびに上書きする。
 function setupDriveDialog({ applyBackup, onBackupStateChanged, showToast }) {
   const dialog = document.querySelector('#driveDialog');
   const clientIdInput = document.querySelector('#driveClientIdInput');
   const autoSyncInput = document.querySelector('#driveAutoSync');
-  const send = (type, payload = {}) => chrome.runtime.sendMessage({ type, ...payload }).then((response) => {
-    if (!response?.ok) throw new Error(response?.error || 'Google Driveとの通信に失敗しました');
-    return response;
-  });
+  const send = (type, payload = {}) => driveHandlers[type](payload);
   const run = async (button, task) => {
     button.disabled = true;
     try { await task(); } catch (error) { showToast(error.message); } finally { button.disabled = false; }
@@ -33,16 +29,13 @@ function setupDriveDialog({ applyBackup, onBackupStateChanged, showToast }) {
     const info = syncStates[syncState];
     const dot = document.createElement('span');
     dot.className = 'drive-dot';
-    // 幅の狭いポップアップでは、対応が必要な状態だけ文字でも表示する
-    const compact = driveButton.dataset.compact !== undefined && ['syncing', 'pending', 'synced'].includes(syncState);
-    driveButton.replaceChildren(dot, document.createTextNode(compact ? buttonLabel : `${buttonLabel} ${info.label}`));
+    driveButton.replaceChildren(dot, document.createTextNode(`${buttonLabel} ${info.label}`));
     driveButton.dataset.syncState = syncState;
     driveButton.title = message ? `${info.title}（${message}）` : info.title;
   }
 
   // Driveでの保存やバックグラウンドの自動保存で、変更件数バッジを更新する
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local') return;
+  onStoreChanged((changes) => {
     if (changes.folderPathBackupState) onBackupStateChanged(changes.folderPathBackupState.newValue ?? {});
     if (changes.folderPathDriveSyncStatus?.newValue) renderSyncState(changes.folderPathDriveSyncStatus.newValue.state, changes.folderPathDriveSyncStatus.newValue.message);
     else if ((changes.folderPaths || changes.folderPathTagSortKeys) && syncState === 'synced') renderSyncState('pending');
@@ -70,7 +63,7 @@ function setupDriveDialog({ applyBackup, onBackupStateChanged, showToast }) {
     document.querySelector('#driveFileName').textContent = status.fileName;
     document.querySelector('#driveFolderInput').value = status.folderId;
     document.querySelector('#driveFolderLink').href = `https://drive.google.com/drive/folders/${encodeURIComponent(status.folderId)}`;
-    document.querySelector('#driveRedirectUrl').textContent = status.redirectUrl;
+    document.querySelector('#driveOrigin').textContent = status.origin;
     const statusText = document.querySelector('#driveStatus');
     statusText.textContent = !status.clientId ? 'クライアントID未設定' : status.connected ? '接続済み' : '未接続（保存時にGoogleのログイン画面が開きます）';
     statusText.classList.toggle('connected', status.connected);
@@ -117,9 +110,9 @@ function setupDriveDialog({ applyBackup, onBackupStateChanged, showToast }) {
     }
   };
   document.querySelector('#closeDriveDialog').onclick = () => dialog.close();
-  document.querySelector('#copyDriveRedirectUrl').onclick = async () => {
-    await navigator.clipboard.writeText(document.querySelector('#driveRedirectUrl').textContent);
-    showToast('リダイレクトURIをコピーしました');
+  document.querySelector('#copyDriveOrigin').onclick = async () => {
+    await navigator.clipboard.writeText(document.querySelector('#driveOrigin').textContent);
+    showToast('JavaScript生成元をコピーしました');
   };
   document.querySelector('#saveDriveClientId').onclick = (event) => run(event.currentTarget, async () => {
     await send('drive_save_client_id', { clientId: clientIdInput.value });
@@ -158,7 +151,7 @@ function setupDriveDialog({ applyBackup, onBackupStateChanged, showToast }) {
   });
 
   (async () => {
-    const saved = await chrome.storage.local.get(['folderPathDriveClientId', 'folderPathDriveSyncStatus']);
+    const saved = await store.get(['folderPathDriveClientId', 'folderPathDriveSyncStatus']);
     if (!saved.folderPathDriveClientId) return renderSyncState('unconfigured');
     renderSyncState(saved.folderPathDriveSyncStatus?.state ?? 'disconnected', saved.folderPathDriveSyncStatus?.message);
     await syncOnOpen();

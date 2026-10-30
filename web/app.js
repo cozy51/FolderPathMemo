@@ -1,3 +1,4 @@
+const APP_VERSION = '2.0.0';
 const state = { items: [], query: '', view: 'all', tag: '', sort: 'registered-desc', tagSortKeys: {}, backupSignatures: {} };
 const $ = (selector) => document.querySelector(selector);
 const dialog = $('#pathDialog');
@@ -12,7 +13,7 @@ function fuzzyMatch(text, query) {
   return true;
 }
 function showToast(message) { const toast = $('#toast'); toast.textContent = message; toast.classList.add('show'); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.classList.remove('show'), 1600); }
-async function persist() { await chrome.storage.local.set({ folderPaths: state.items, folderPathTagSortKeys: state.tagSortKeys }); updateBackupCount(); }
+async function persist() { await store.set({ folderPaths: state.items, folderPathTagSortKeys: state.tagSortKeys }); updateBackupCount(); }
 function makeSignatures() { const signatures = Object.fromEntries(state.items.map((item) => [item.id, JSON.stringify(item)])); if (Object.keys(state.tagSortKeys).length) signatures.__tagSortKeys = JSON.stringify(state.tagSortKeys); return signatures; }
 function updateBackupCount() { const current = makeSignatures(); const ids = new Set([...Object.keys(current), ...Object.keys(state.backupSignatures)]); const count = [...ids].filter((id) => current[id] !== state.backupSignatures[id]).length; const badge = $('#backupChangeCount'); badge.textContent = count; badge.classList.toggle('clean', count === 0); badge.title = `前回バックアップから ${count} 件変更`; }
 function normalizeFiles(files) { return Array.isArray(files) ? files.map((file) => ({ name: String(file.name ?? '').trim(), memo: String(file.memo ?? '').trim() })).filter((file) => file.name || file.memo) : []; }
@@ -37,15 +38,17 @@ function renderFileRows(files = []) { $('#fileRows').replaceChildren(); const no
 function createFileList(item) { const files = normalizeFiles(item.files); const wrap = document.createElement('div'); wrap.className = 'folder-file-list'; if (!files.length) { wrap.innerHTML = '<p class="file-list-empty">登録されたファイルはありません。編集画面からファイルリストを追加できます。</p>'; return wrap; } files.forEach((file, index) => { const button = document.createElement('button'); button.type = 'button'; button.className = 'file-list-item'; const no = document.createElement('span'); no.className = 'file-list-no'; no.textContent = String(index + 1); const name = document.createElement('span'); name.className = 'file-list-name'; const typeInfo = fileTypeInfo(file.name); const icon = document.createElement('span'); icon.className = `file-type-icon ${typeInfo.type}`; icon.textContent = typeInfo.label; icon.title = typeInfo.title; name.append(icon, document.createTextNode(file.name || '（ファイル名なし）')); const memo = document.createElement('span'); memo.className = 'file-list-memo'; memo.textContent = file.memo; button.append(no, name, memo); button.onclick = async (event) => { event.stopPropagation(); await navigator.clipboard.writeText(file.name); showToast('ファイル名をコピーしました'); }; wrap.append(button); }); return wrap; }
 function backupFilename(now = new Date()) { const pad = (value) => String(value).padStart(2, '0'); return `backup-ext_FolderPathMemo_${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.json`; }
 
+// Webページから直接フォルダーは開けないため、拡張機能とNative Messagingホスト経由でExplorerを起動する。
+// 拡張機能や連携ホストがない環境では、パスをコピーして貼り付けてもらう
 async function openFolder(item) {
   try {
-    const response = await chrome.runtime.sendMessage({ type: 'open_folder', path: item.path });
-    if (!response?.ok) throw new Error(response?.error);
+    const response = await openFolderWithExtension(item.path);
     item.lastOpenedAt = Date.now(); item.openCount = (item.openCount ?? 0) + 1; await persist(); render();
-    const hostVersion = response.version ?? '1.3.25以前';
-    if (hostVersion !== chrome.runtime.getManifest().version) showToast(`連携ホストが古いままです（${hostVersion}）。install.ps1 を実行し直してください`);
-    else showToast(response.openedInTab ? '新しいタブで開きました' : 'エクスプローラーで開きました');
-  } catch { await navigator.clipboard.writeText(item.path); showToast('連携できないためパスをコピーしました'); }
+    showToast(response.openedInTab ? '新しいタブで開きました' : 'エクスプローラーで開きました');
+  } catch (error) {
+    await navigator.clipboard.writeText(item.path);
+    showToast(await extensionReady ? `開けなかったためパスをコピーしました（${error.message}）` : 'パスをコピーしました（Explorerで開くには拡張機能が必要です）');
+  }
 }
 function openEditor(item) {
   $('#dialogTitle').textContent = item ? 'フォルダーを編集' : 'フォルダーを登録';
@@ -146,12 +149,24 @@ $('#tagForm').onsubmit = async (event) => {
 };
 document.querySelectorAll('.view-tab').forEach((button) => button.onclick = () => { state.view = button.dataset.view; document.querySelectorAll('.view-tab').forEach((tab) => tab.classList.toggle('active', tab === button)); render(); });
 function buildBackup() { return { filename: backupFilename(), content: JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), items: state.items, tagSortKeys: state.tagSortKeys }, null, 2), signatures: makeSignatures() }; }
-async function markBackedUp(signatures) { state.backupSignatures = signatures; await chrome.storage.local.set({ folderPathBackupState: state.backupSignatures }); updateBackupCount(); }
+async function markBackedUp(signatures) { state.backupSignatures = signatures; await store.set({ folderPathBackupState: state.backupSignatures }); updateBackupCount(); }
 async function applyBackup(data) { if (!Array.isArray(data?.items) || data.items.some((item) => typeof item.name !== 'string' || typeof item.path !== 'string')) throw new Error('バックアップを読み込めませんでした'); state.items = data.items.map((item) => { const updatedAt = Number(item.updatedAt) || Date.now(); return { id: item.id || crypto.randomUUID(), name: item.name, path: item.path, memo: typeof item.memo === 'string' ? item.memo : '', tags: Array.isArray(item.tags) ? item.tags : [], favorite: Boolean(item.favorite), createdAt: Number(item.createdAt) || updatedAt, updatedAt, files: normalizeFiles(item.files), lastOpenedAt: Number(item.lastOpenedAt) || 0, openCount: Number(item.openCount) || 0 }; }); state.tagSortKeys = data.tagSortKeys && typeof data.tagSortKeys === 'object' ? data.tagSortKeys : {}; await persist(); render(); showToast(`${state.items.length}件を復元しました`); }
 $('#exportButton').onclick = async () => { const { filename, content, signatures } = buildBackup(); const blob = new Blob([content], { type: 'application/json' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = filename; link.click(); URL.revokeObjectURL(link.href); await markBackedUp(signatures); showToast('バックアップを作成しました'); };
 $('#importButton').onclick = () => $('#importInput').click();
 $('#importInput').onchange = async (event) => { try { await applyBackup(JSON.parse(await event.target.files[0].text())); } catch { showToast('バックアップを読み込めませんでした'); } event.target.value = ''; };
-setupDriveDialog({ applyBackup, onBackupStateChanged: (signatures) => { state.backupSignatures = signatures; updateBackupCount(); }, showToast });
-(async () => { const saved = await chrome.storage.local.get(['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState']); state.items = Array.isArray(saved.folderPaths) ? saved.folderPaths : []; state.tagSortKeys = saved.folderPathTagSortKeys && typeof saved.folderPathTagSortKeys === 'object' ? saved.folderPathTagSortKeys : {}; state.backupSignatures = saved.folderPathBackupState && typeof saved.folderPathBackupState === 'object' ? saved.folderPathBackupState : {}; render(); updateBackupCount(); })();
+// 以前の拡張機能の画面で使っていたデータと設定。Webアプリに何も保存されていないときに一度だけ引き継ぐ
+const LEGACY_KEYS = ['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState', 'folderPathDriveClientId', 'folderPathDriveFolderId', 'folderPathDriveAutoSync', 'folderPathDriveSyncedAt', 'folderPathDriveSyncState'];
+async function importLegacyData() {
+  if ((await store.get('folderPaths')).folderPaths !== undefined) return false;
+  const legacy = await loadLegacyExtensionData();
+  if (!Array.isArray(legacy?.folderPaths)) return false;
+  await store.set(Object.fromEntries(LEGACY_KEYS.filter((key) => legacy[key] !== undefined).map((key) => [key, legacy[key]])));
+  return true;
+}
+(async () => { const imported = await importLegacyData(); if (imported) showToast('拡張機能に登録されていたデータを引き継ぎました'); const saved = await store.get(['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState']); state.items = Array.isArray(saved.folderPaths) ? saved.folderPaths : []; state.tagSortKeys = saved.folderPathTagSortKeys && typeof saved.folderPathTagSortKeys === 'object' ? saved.folderPathTagSortKeys : {}; state.backupSignatures = saved.folderPathBackupState && typeof saved.folderPathBackupState === 'object' ? saved.folderPathBackupState : {}; render(); updateBackupCount();
+  // 引き継いだDrive設定で同期を始めるよう、データの準備ができてから設定する
+  setupDriveDialog({ applyBackup, onBackupStateChanged: (signatures) => { state.backupSignatures = signatures; updateBackupCount(); }, showToast }); })();
 
-$('#appVersion').textContent = `v${chrome.runtime.getManifest().version}`;
+// 別のタブで登録内容が変わったら、このタブの表示も合わせる
+window.addEventListener('storage', async (event) => { if (!['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState'].includes(event.key)) return; const saved = await store.get(['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState']); state.items = Array.isArray(saved.folderPaths) ? saved.folderPaths : []; state.tagSortKeys = saved.folderPathTagSortKeys ?? {}; state.backupSignatures = saved.folderPathBackupState ?? {}; render(); updateBackupCount(); });
+$('#appVersion').textContent = `v${APP_VERSION}`;
