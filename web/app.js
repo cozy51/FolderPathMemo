@@ -1,4 +1,4 @@
-const APP_VERSION = '2.1.0';
+const APP_VERSION = '2.1.1';
 const state = { items: [], query: '', view: 'all', tag: '', sort: 'registered-desc', tagSortKeys: {}, backupSignatures: {}, batchPaths: [], batchKeepTabs: true };
 const $ = (selector) => document.querySelector(selector);
 const dialog = $('#pathDialog');
@@ -165,7 +165,8 @@ function renderBatchRows() {
     input.onchange = async () => { const value = input.value.trim(); if (value) paths[index] = value; else paths.splice(index, 1); await saveBatchPaths(); renderBatchRows(); };
     const button = (label, title, className, disabled, action) => { const element = document.createElement('button'); element.type = 'button'; element.textContent = label; element.title = title; element.className = className; element.disabled = disabled; element.onclick = async () => { action(); await saveBatchPaths(); renderBatchRows(); }; return element; };
     const swap = (target) => { [paths[index], paths[target]] = [paths[target], paths[index]]; };
-    row.append(input, button('↑', '上へ', '', index === 0, () => swap(index - 1)), button('↓', '下へ', '', index === paths.length - 1, () => swap(index + 1)), button('×', '削除', 'batch-remove', false, () => paths.splice(index, 1)));
+    const open = document.createElement('button'); open.type = 'button'; open.className = 'batch-open'; open.textContent = '開く'; open.title = 'このフォルダーだけを開く'; open.onclick = () => openFolder(state.items.find((item) => item.path === paths[index]) ?? { path: paths[index] });
+    row.append(input, open, button('↑', '上へ', '', index === 0, () => swap(index - 1)), button('↓', '下へ', '', index === paths.length - 1, () => swap(index + 1)), button('×', '削除', 'batch-remove', false, () => paths.splice(index, 1)));
     return row;
   }));
   $('#batchEmpty').hidden = paths.length > 0; $('#batchOpenButton').disabled = paths.length === 0;
