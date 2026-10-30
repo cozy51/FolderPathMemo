@@ -3,12 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FolderPath Memo — 一覧</title>
-    <link rel="stylesheet" href="library.css" />
+    <title>FolderPath Memo</title>
+    <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="app.css" />
   </head>
   <body>
     <header>
-      <div class="brand"><img src="icons/icon.svg" alt="" /><div><h1>FolderPath Memo</h1><p>フォルダー一覧 <span id="appVersion" class="version-badge">v1.3.20</span></p></div></div>
+      <div class="brand"><img src="icons/icon.svg" alt="" /><div><h1>FolderPath Memo</h1><p>フォルダー一覧 <span id="appVersion" class="version-badge"></span></p></div></div>
       <div class="header-actions"><button id="importButton" class="ghost-button" type="button">インポート</button><div class="backup-control"><button id="exportButton" class="ghost-button" type="button">バックアップ</button><span id="backupChangeCount" class="change-badge" title="前回バックアップからの変更件数">0</span></div><button id="driveButton" class="ghost-button" type="button" title="Google Driveと同期">Google Drive</button><button id="addButton" class="primary-button" type="button">＋ 新規登録</button><input id="importInput" type="file" accept="application/json,.json" hidden /></div>
     </header>
     <main>
@@ -67,9 +68,9 @@
         </section>
         <details class="drive-section drive-settings">
           <summary>接続設定（初回のみ）</summary>
-          <ol class="drive-hint"><li>Google Cloud ConsoleでGoogle Drive APIを有効にし、OAuthクライアントID（種類: ウェブ アプリケーション）を作成</li><li>「承認済みのリダイレクトURI」に下のURIを登録</li><li>発行されたクライアントIDを貼り付けて保存し、「Googleに接続」を押す</li><li>保存先を変える場合は、フォルダーのURLまたはIDを入力して保存（空欄で既定のフォルダーに戻ります）</li></ol>
-          <label class="drive-label">リダイレクトURI</label>
-          <div class="drive-redirect-row"><code id="driveRedirectUrl"></code><button id="copyDriveRedirectUrl" class="ghost-button" type="button">コピー</button></div>
+          <ol class="drive-hint"><li>Google Cloud ConsoleでGoogle Drive APIを有効にし、OAuthクライアントID（種類: ウェブ アプリケーション）を作成</li><li>「承認済みのJavaScript生成元」に下のURLを登録</li><li>発行されたクライアントIDを貼り付けて保存し、「Googleに接続」を押す</li><li>保存先を変える場合は、フォルダーのURLまたはIDを入力して保存（空欄で既定のフォルダーに戻ります）</li></ol>
+          <label class="drive-label">承認済みのJavaScript生成元</label>
+          <div class="drive-redirect-row"><code id="driveOrigin"></code><button id="copyDriveOrigin" class="ghost-button" type="button">コピー</button></div>
           <label class="drive-label" for="driveFolderInput">保存先フォルダー（URLまたはID）</label>
           <div class="drive-client-row"><input id="driveFolderInput" autocomplete="off" spellcheck="false" placeholder="保存先フォルダーのURLまたはID" aria-label="保存先フォルダー" /><button id="saveDriveFolder" class="ghost-button" type="button">保存</button></div>
           <label class="drive-label" for="driveClientIdInput">OAuthクライアントID</label>
@@ -79,7 +80,11 @@
       </div>
     </dialog>
     <div id="toast" class="toast" role="status"></div>
+    <script src="https://accounts.google.com/gsi/client" async></script>
+    <script src="store.js"></script>
+    <script src="extension.js"></script>
+    <script src="drive.js"></script>
     <script src="drive-ui.js"></script>
-    <script src="library.js"></script>
+    <script src="app.js"></script>
   </body>
 </html>

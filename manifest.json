@@ -1,18 +1,24 @@
 {
   "manifest_version": 3,
   "name": "FolderPath Memo",
-  "version": "1.6.1",
-  "description": "よく使うフォルダーパスを、Google Chromeでタグやお気に入りと一緒にすばやく管理します。",
+  "version": "2.0.0",
+  "description": "FolderPath MemoのWebアプリから、Windowsのエクスプローラーでフォルダーを開けるようにします。",
   "permissions": [
-    "storage",
-    "clipboardWrite",
     "nativeMessaging",
-    "identity",
-    "alarms"
+    "storage"
   ],
   "host_permissions": [
-    "https://www.googleapis.com/*",
-    "https://oauth2.googleapis.com/*"
+    "https://folderpathmemo.vercel.app/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://folderpathmemo.vercel.app/*",
+        "http://localhost/*"
+      ],
+      "js": ["web-bridge.js"],
+      "run_at": "document_start"
+    }
   ],
   "icons": {
     "16": "icons/icon16.png",
@@ -24,8 +30,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "FolderPath Memo",
-    "default_popup": "popup.html",
+    "default_title": "FolderPath Memoを開く",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",
@@ -33,7 +38,6 @@
       "128": "icons/icon128.png"
     }
   },
-  "options_page": "popup.html",
   "commands": {
     "_execute_action": {
       "suggested_key": {
