@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FolderPath Memo",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "よく使うフォルダーパスを、Google Chromeでタグやお気に入りと一緒にすばやく管理します。",
   "permissions": [
     "storage",

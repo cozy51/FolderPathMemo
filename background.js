@@ -242,7 +242,9 @@ async function getDriveToken({ forceInteractive = false, silent = false } = {}) 
 }
 
 async function authorize(clientId, interactive) {
-  const params = new URLSearchParams({ client_id: clientId, response_type: 'token', redirect_uri: chrome.identity.getRedirectURL(), scope: DRIVE_SCOPE, include_granted_scopes: 'true' });
+  // include_granted_scopes は付けない。同じクライアントIDで過去に許可した別スコープ（youtube.readonly など）が
+  // 混ざると「同時に要求できないスコープ」としてGoogleが400 invalid_requestで拒否するため
+  const params = new URLSearchParams({ client_id: clientId, response_type: 'token', redirect_uri: chrome.identity.getRedirectURL(), scope: DRIVE_SCOPE });
   if (!interactive) params.set('prompt', 'none');
   let responseUrl;
   try {
