@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -14,7 +15,7 @@ internal static class FolderPathNativeHost
 {
     // Kept in step with the version in manifest.json; the installer verifies that the host it
     // just built reports this value.
-    private const string HostVersion = "1.3.27";
+    private const string HostVersion = "1.4.0";
 
     private const int MaximumMessageBytes = 1024 * 1024;
     private const int Windows11ExplorerTabsBuild = 22621;
@@ -146,6 +147,11 @@ internal static class FolderPathNativeHost
                 string json = Encoding.UTF8.GetString(ReadExactly(input, length));
                 var serializer = new JavaScriptSerializer();
                 var request = serializer.Deserialize<Dictionary<string, object>>(json);
+                if (request.ContainsKey("action") && Convert.ToString(request["action"]) == "open_many")
+                {
+                    OpenMany(output, serializer, request);
+                    return;
+                }
                 path = request.ContainsKey("path") ? Convert.ToString(request["path"]) : string.Empty;
                 if (string.IsNullOrWhiteSpace(path) || path.IndexOf('\0') >= 0) throw new InvalidDataException("Invalid folder path.");
 
@@ -176,14 +182,80 @@ internal static class FolderPathNativeHost
         }
     }
 
-    private static bool TryOpenInExistingExplorerTab(string path)
+    // Opens several folders in order, as the "open together" list in the web app asks for. With
+    // newWindow the first folder gets a fresh window and the rest become its tabs; otherwise every
+    // folder is added as a tab of the existing Explorer window, leaving its open tabs alone. All
+    // folders target the same window so they end up side by side in the requested order.
+    private static void OpenMany(Stream output, JavaScriptSerializer serializer, Dictionary<string, object> request)
+    {
+        var paths = new List<string>();
+        IEnumerable requested = request.ContainsKey("paths") ? request["paths"] as IEnumerable : null;
+        if (requested != null && !(requested is string))
+        {
+            foreach (object value in requested)
+            {
+                string candidate = Convert.ToString(value);
+                if (!string.IsNullOrWhiteSpace(candidate) && candidate.IndexOf('\0') < 0) paths.Add(candidate.Trim());
+            }
+        }
+        if (paths.Count == 0) throw new InvalidDataException("Invalid folder path.");
+        bool newWindow = request.ContainsKey("newWindow") && Convert.ToBoolean(request["newWindow"]);
+        Log("request open_many count=" + paths.Count + " newWindow=" + newWindow);
+
+        bool tabsSupported = SupportsExplorerTabs();
+        IntPtr target = IntPtr.Zero;
+        var opened = new List<string>();
+        var missing = new List<string>();
+        int openedInTabs = 0;
+        foreach (string path in paths)
+        {
+            Log("path=" + path);
+            // Explorer shows a blocking error dialog for a folder that does not exist, which would
+            // stop every folder after it, so skip those and report them instead.
+            if (!Directory.Exists(path))
+            {
+                Log("skipped: folder not found");
+                missing.Add(path);
+                continue;
+            }
+
+            bool openedInTab = false;
+            if (tabsSupported && !(newWindow && opened.Count == 0))
+            {
+                if (target == IntPtr.Zero) target = FindExplorerWindow();
+                if (target != IntPtr.Zero)
+                {
+                    Log("target window=" + target.ToInt64() + " minimized=" + IsIconic(target));
+                    openedInTab = TryOpenInExplorerTab(target, path);
+                }
+                else Log("no Explorer window found");
+            }
+            if (openedInTab) openedInTabs++;
+            else
+            {
+                Log("opening a new window");
+                IntPtr window = OpenInNewExplorerWindow(path);
+                if (target == IntPtr.Zero) target = window;
+            }
+            opened.Add(path);
+        }
+        Log("done opened=" + opened.Count + " inTabs=" + openedInTabs + " missing=" + missing.Count);
+        Write(output, serializer.Serialize(new { ok = opened.Count > 0, opened = opened, missing = missing,
+            openedInTabs = openedInTabs, version = HostVersion,
+            error = opened.Count > 0 ? null : "Folder not found: " + string.Join(", ", missing.ToArray()) }));
+    }
+
+    private static bool SupportsExplorerTabs()
     {
         int build = GetWindowsBuildNumber();
-        if (build < Windows11ExplorerTabsBuild)
-        {
-            Log("build " + build + " has no Explorer tabs");
-            return false;
-        }
+        if (build >= Windows11ExplorerTabsBuild) return true;
+        Log("build " + build + " has no Explorer tabs");
+        return false;
+    }
+
+    private static bool TryOpenInExistingExplorerTab(string path)
+    {
+        if (!SupportsExplorerTabs()) return false;
 
         IntPtr explorerWindow = FindExplorerWindow();
         if (explorerWindow == IntPtr.Zero)
@@ -192,7 +264,11 @@ internal static class FolderPathNativeHost
             return false;
         }
         Log("target window=" + explorerWindow.ToInt64() + " minimized=" + IsIconic(explorerWindow));
+        return TryOpenInExplorerTab(explorerWindow, path);
+    }
 
+    private static bool TryOpenInExplorerTab(IntPtr explorerWindow, string path)
+    {
         // A minimized window has no keyboard focus, so keystrokes used to reach nothing. Restore
         // the window and confirm each following step instead of trusting fixed delays: after a
         // restore Explorer needs noticeably longer to build its tab strip and address bar.
@@ -647,7 +723,7 @@ internal static class FolderPathNativeHost
         }
     }
 
-    private static void OpenInNewExplorerWindow(string path)
+    private static IntPtr OpenInNewExplorerWindow(string path)
     {
         List<IntPtr> before = FindExplorerWindows();
         Process.Start(new ProcessStartInfo("explorer.exe", "/n," + Quote(path)) { UseShellExecute = false });
@@ -669,6 +745,7 @@ internal static class FolderPathNativeHost
             return false;
         });
         if (opened != IntPtr.Zero) ActivateExplorerWindow(opened);
+        return opened;
     }
 
     private static int GetWindowsBuildNumber()

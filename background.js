@@ -22,6 +22,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true;
   }
+  if (message?.type === 'open_folders') {
+    // まとめて開く：ネイティブホストが上から順にタブで開く
+    const paths = Array.isArray(message.paths) ? message.paths.filter((path) => typeof path === 'string' && path.trim()) : [];
+    if (!paths.length) {
+      sendResponse({ ok: false, error: 'フォルダーパスが空です。' });
+      return false;
+    }
+    chrome.runtime.sendNativeMessage(NATIVE_HOST, { action: 'open_many', paths, newWindow: Boolean(message.newWindow) }, (response) => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        sendResponse({ ok: false, error: error.message });
+        return;
+      }
+      sendResponse(response ?? { ok: false, error: 'ネイティブホストから応答がありません。' });
+    });
+    return true;
+  }
   if (message?.type === 'legacy_data') {
     // 以前の拡張機能の画面で登録したデータを、Webアプリへ引き継ぐために渡す
     chrome.storage.local.get(null).then((data) => sendResponse({ ok: true, data }), (error) => sendResponse({ ok: false, error: error.message }));

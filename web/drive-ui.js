@@ -38,7 +38,7 @@ function setupDriveDialog({ applyBackup, onBackupStateChanged, showToast }) {
   onStoreChanged((changes) => {
     if (changes.folderPathBackupState) onBackupStateChanged(changes.folderPathBackupState.newValue ?? {});
     if (changes.folderPathDriveSyncStatus?.newValue) renderSyncState(changes.folderPathDriveSyncStatus.newValue.state, changes.folderPathDriveSyncStatus.newValue.message);
-    else if ((changes.folderPaths || changes.folderPathTagSortKeys) && syncState === 'synced') renderSyncState('pending');
+    else if ((changes.folderPaths || changes.folderPathTagSortKeys || changes.folderPathBatchOpen) && syncState === 'synced') renderSyncState('pending');
   });
 
   async function loadFromDrive() {

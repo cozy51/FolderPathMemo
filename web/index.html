@@ -10,7 +10,7 @@
   <body>
     <header>
       <div class="brand"><img src="icons/icon.svg" alt="" /><div><h1>FolderPath Memo</h1><p>フォルダー一覧 <span id="appVersion" class="version-badge"></span></p></div></div>
-      <div class="header-actions"><button id="importButton" class="ghost-button" type="button">インポート</button><div class="backup-control"><button id="exportButton" class="ghost-button" type="button">バックアップ</button><span id="backupChangeCount" class="change-badge" title="前回バックアップからの変更件数">0</span></div><button id="driveButton" class="ghost-button" type="button" title="Google Driveと同期">Google Drive</button><button id="addButton" class="primary-button" type="button">＋ 新規登録</button><input id="importInput" type="file" accept="application/json,.json" hidden /></div>
+      <div class="header-actions"><button id="importButton" class="ghost-button" type="button">インポート</button><div class="backup-control"><button id="exportButton" class="ghost-button" type="button">バックアップ</button><span id="backupChangeCount" class="change-badge" title="前回バックアップからの変更件数">0</span></div><button id="batchButton" class="ghost-button" type="button" title="登録したフォルダーをエクスプローラーのタブでまとめて開く">📂 まとめて開く</button><button id="driveButton" class="ghost-button" type="button" title="Google Driveと同期">Google Drive</button><button id="addButton" class="primary-button" type="button">＋ 新規登録</button><input id="importInput" type="file" accept="application/json,.json" hidden /></div>
     </header>
     <main>
       <section class="controls">
@@ -54,6 +54,18 @@
         <div id="tagRows" class="tag-rows"></div>
         <div class="dialog-actions"><button id="cancelTagButton" class="ghost-button" type="button">キャンセル</button><button class="primary-button" type="submit">保存する</button></div>
       </form>
+    </dialog>
+    <dialog id="batchDialog" class="batch-dialog">
+      <div class="batch-content">
+        <div class="dialog-header"><div><p>OPEN TOGETHER</p><h2>フォルダーをまとめて開く</h2></div><button id="closeBatchDialog" class="close-button" type="button" aria-label="閉じる">×</button></div>
+        <p class="tag-dialog-hint">登録したフォルダーを、上から順にエクスプローラーのタブで開きます。登録内容は自動で保存されます。</p>
+        <div class="batch-add-row"><input id="batchPathInput" list="batchPathOptions" maxlength="500" autocomplete="off" placeholder="フォルダーパスを入力、または登録済みフォルダーから選択" aria-label="追加するフォルダーパス" /><button id="batchAddButton" class="ghost-button" type="button">追加</button></div>
+        <datalist id="batchPathOptions"></datalist>
+        <ol id="batchRows" class="batch-rows"></ol>
+        <p id="batchEmpty" class="batch-empty" hidden>まだフォルダーがありません。上の欄から追加してください。</p>
+        <label class="batch-keep"><input id="batchKeepTabs" type="checkbox" checked /> 既存のエクスプローラーにタブを追加（既存タブは残す）</label>
+        <div class="dialog-actions"><button id="batchCloseButton" class="ghost-button" type="button">閉じる</button><button id="batchOpenButton" class="primary-button" type="button">登録フォルダーをタブで開く</button></div>
+      </div>
     </dialog>
     <dialog id="driveDialog" class="drive-dialog">
       <div class="drive-content">
