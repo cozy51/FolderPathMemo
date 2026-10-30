@@ -1,19 +1,19 @@
 {
   "manifest_version": 3,
   "name": "FolderPath Memo",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "FolderPath MemoのWebアプリから、Windowsのエクスプローラーでフォルダーを開けるようにします。",
   "permissions": [
     "nativeMessaging",
     "storage"
   ],
   "host_permissions": [
-    "https://folderpathmemo.vercel.app/*"
+    "https://folder-path-memo.vercel.app/*"
   ],
   "content_scripts": [
     {
       "matches": [
-        "https://folderpathmemo.vercel.app/*",
+        "https://folder-path-memo.vercel.app/*",
         "http://localhost/*"
       ],
       "js": ["web-bridge.js"],

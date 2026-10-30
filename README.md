@@ -40,9 +40,9 @@ Webアプリはビルド不要の静的ファイル（`web/`フォルダー）�
 
 1. [Vercel](https://vercel.com/)で「Add New… → Project」を選び、このGitHubリポジトリをインポートします。
 2. Framework Presetは「Other」のまま、ビルドコマンドなどは空欄で「Deploy」します。
-3. 公開されたURL（例: `https://folderpathmemo.vercel.app`）を確認します。
+3. 公開されたURL（例: `https://folder-path-memo.vercel.app`）を確認します。
 
-**公開URLが`https://folderpathmemo.vercel.app`以外になった場合**は、拡張機能がそのURLで動くように`manifest.json`の次の2か所を書き換えてから、拡張機能を再読み込みしてください。
+**公開URLが`https://folder-path-memo.vercel.app`以外になった場合**は、拡張機能がそのURLで動くように`manifest.json`の次の2か所を書き換えてから、拡張機能を再読み込みしてください。
 
 ```json
 "host_permissions": ["https://<公開URLのホスト名>/*"],
@@ -197,7 +197,7 @@ WebアプリにはGoogleのクライアントIDが含まれていないため、
 1. [Google Cloud Console](https://console.cloud.google.com/)でプロジェクトを作成し、**Google Drive API**を有効にします。
 2. 「OAuth同意画面」を設定し、自分のGoogleアカウントをテストユーザーに追加します（公開ステータスは「テスト」のままで使えます）。
 3. 「認証情報」→「OAuthクライアントIDを作成」で、種類に**ウェブ アプリケーション**を選びます。
-4. 「承認済みのJavaScript生成元」に、Driveダイアログの「接続設定」に表示されるWebアプリのURL（例: `https://folderpathmemo.vercel.app`）を登録します。以前の拡張機能用に作ったクライアントIDを使い続ける場合も、この登録を追加してください（リダイレクトURIは不要になりました）。
+4. 「承認済みのJavaScript生成元」に、Driveダイアログの「接続設定」に表示されるWebアプリのURL（例: `https://folder-path-memo.vercel.app`）を登録します。以前の拡張機能用に作ったクライアントIDを使い続ける場合も、この登録を追加してください（リダイレクトURIは不要になりました）。
 5. 発行されたクライアントIDをDriveダイアログに貼り付けて「保存」し、「Googleに接続」を押してログインします。
 
 > Googleのログイン画面はポップアップウィンドウで開きます。開かない場合は、Chromeのアドレスバーでこのサイトのポップアップを許可してください。

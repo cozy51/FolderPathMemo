@@ -1,4 +1,4 @@
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.0.1';
 const state = { items: [], query: '', view: 'all', tag: '', sort: 'registered-desc', tagSortKeys: {}, backupSignatures: {} };
 const $ = (selector) => document.querySelector(selector);
 const dialog = $('#pathDialog');
