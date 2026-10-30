@@ -1,4 +1,4 @@
-const APP_VERSION = '2.1.1';
+const APP_VERSION = '2.1.2';
 const state = { items: [], query: '', view: 'all', tag: '', sort: 'registered-desc', tagSortKeys: {}, backupSignatures: {}, batchPaths: [], batchKeepTabs: true };
 const $ = (selector) => document.querySelector(selector);
 const dialog = $('#pathDialog');
