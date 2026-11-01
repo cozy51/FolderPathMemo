@@ -31,6 +31,8 @@ function setupDriveDialog({ applyBackup, onBackupStateChanged, showToast }) {
     dot.className = 'drive-dot';
     driveButton.replaceChildren(dot, document.createTextNode(`${buttonLabel} ${info.label}`));
     driveButton.dataset.syncState = syncState;
+    // 未接続に気づけるよう、ページ全体の背景色も状態に合わせて変える
+    document.body.dataset.driveState = syncState;
     driveButton.title = message ? `${info.title}（${message}）` : info.title;
   }
 
