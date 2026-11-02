@@ -1,4 +1,4 @@
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.3.0';
 const state = { items: [], query: '', view: 'all', tag: '', sort: 'registered-desc', tagSortKeys: {}, backupSignatures: {}, batchPaths: [], batchKeepTabs: true };
 const $ = (selector) => document.querySelector(selector);
 const dialog = $('#pathDialog');
@@ -8,7 +8,8 @@ let editingTags = new Set();
 // 例：<\\server\share\folder> → \\server\share\folder、"\\server\share\folder\資料.xlsx" → \\server\share\folder
 const PATH_OPENERS = '"\'`<＜《〈「『【(（[［“‘'; const PATH_CLOSERS = '"\'`>＞》〉」』】)）]］”’';
 const FILE_EXTENSION = /\.(?=[a-z0-9]*[a-z])[a-z0-9]{2,5}$/i;
-function cleanFolderPath(text) {
+// 整形したフォルダーパスと、取り除いたファイル名（なければ空）を返す
+function parseFolderPath(text) {
   let path = String(text ?? '').replace(/[\u200b\ufeff]/g, '').trim();
   // file:///C:/folder → C:\folder、file://server/share → \\server\share
   const fileUrl = path.match(/file:\/\/\/?([^\s"'<>]+)/i);
@@ -30,10 +31,22 @@ function cleanFolderPath(text) {
   }
   // 最後の要素がファイル名（拡張子付き）なら、そのフォルダーにする。\\server\share 自体は残す
   const base = path.replace(/[\\/]+$/, ''); const segments = base.split(/[\\/]/);
-  if (segments.length > (base.startsWith('\\\\') ? 4 : 1) && FILE_EXTENSION.test(segments.at(-1))) path = base.slice(0, base.length - segments.at(-1).length);
-  return path.replace(/(?<=[^\\/:])[\\/]+$/, '');
+  let file = '';
+  if (segments.length > (base.startsWith('\\\\') ? 4 : 1) && FILE_EXTENSION.test(segments.at(-1))) { file = segments.at(-1); path = base.slice(0, base.length - file.length); }
+  return { path: path.replace(/(?<=[^\\/:])[\\/]+$/, ''), file };
 }
-function cleanFolderPaths(text) { const seen = new Set(); return String(text ?? '').split(/\r?\n/).map(cleanFolderPath).filter((path) => { const key = path.toLocaleLowerCase(); if (!path || seen.has(key)) return false; seen.add(key); return true; }); }
+function cleanFolderPath(text) { return parseFolderPath(text).path; }
+// 1行に1つのパスを整形する。同じフォルダーは1件にまとめ、取り除いたファイル名はそのフォルダーに集める
+function parseFolderPaths(text) {
+  const entries = new Map();
+  for (const line of String(text ?? '').split(/\r?\n/)) {
+    const { path, file } = parseFolderPath(line); if (!path) continue;
+    const key = path.toLocaleLowerCase(); if (!entries.has(key)) entries.set(key, { path, files: [] });
+    const entry = entries.get(key); if (file && !entry.files.includes(file)) entry.files.push(file);
+  }
+  return [...entries.values()];
+}
+function cleanFolderPaths(text) { return parseFolderPaths(text).map(({ path }) => path); }
 function deriveFolderName(path) { const normalized = cleanFolderPath(path).replace(/[\\/]+$/, ''); return normalized.split(/[\\/]/).filter(Boolean).pop() || path.trim(); }
 function syncNameFromPath() { if (nameAutoFill) $('#nameInput').value = deriveFolderName($('#pathInput').value); }
 
@@ -230,9 +243,21 @@ $('#batchOpenButton').onclick = openBatchFolders;
 
 // 一時的に開く：貼り付けたパスを登録せずにその場で開く（1行に1つ、余計な文字やファイル名は取り除く）
 function renderTempPreview() {
-  const paths = cleanFolderPaths($('#tempPathInput').value);
-  $('#tempPreview').replaceChildren(...paths.map((path) => { const row = document.createElement('li'); row.className = 'temp-row'; row.textContent = path; row.title = path; return row; }));
-  $('#tempPreviewLabel').textContent = paths.length ? `開くフォルダー（${paths.length}件）` : '';
+  const entries = parseFolderPaths($('#tempPathInput').value); const paths = entries.map(({ path }) => path);
+  $('#tempPreview').replaceChildren(...entries.map(({ path, files }) => {
+    const row = document.createElement('li'); row.className = 'temp-row';
+    const folder = document.createElement('div'); folder.className = 'temp-folder'; folder.textContent = path; row.append(folder);
+    files.forEach((file) => {
+      const line = document.createElement('div'); line.className = 'temp-file';
+      const label = document.createElement('span'); label.className = 'temp-file-label'; label.textContent = 'ファイル名を除外';
+      const name = document.createElement('span'); name.className = 'temp-file-name'; name.textContent = `📄 ${file}`; name.title = file;
+      const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'temp-file-copy'; copy.textContent = 'ファイル名をコピー'; copy.onclick = async () => { await navigator.clipboard.writeText(file); showToast('ファイル名をコピーしました'); };
+      line.append(label, name, copy); row.append(line);
+    });
+    return row;
+  }));
+  const fileTotal = entries.reduce((total, { files }) => total + files.length, 0);
+  $('#tempPreviewLabel').textContent = paths.length ? `開くフォルダー（${paths.length}件）${fileTotal ? `・ファイル名を含むパスは、そのファイルがあるフォルダーを開きます` : ''}` : '';
   $('#tempOpenButton').disabled = paths.length === 0; $('#tempOpenButton').textContent = paths.length > 1 ? `${paths.length}件をタブで開く` : '開く';
   return paths;
 }
@@ -256,7 +281,7 @@ async function openTempFolders() {
   } finally { renderTempPreview(); }
 }
 $('#tempButton').onclick = openTempDialog; $('#closeTempDialog').onclick = $('#tempCloseButton').onclick = () => $('#tempDialog').close();
-$('#tempPathInput').oninput = renderTempPreview; $('#tempClearButton').onclick = () => { $('#tempPathInput').value = ''; renderTempPreview(); $('#tempPathInput').focus(); };
+['input', 'change', 'paste', 'cut', 'drop', 'compositionend'].forEach((type) => $('#tempPathInput').addEventListener(type, () => setTimeout(renderTempPreview))); $('#tempClearButton').onclick = () => { $('#tempPathInput').value = ''; renderTempPreview(); $('#tempPathInput').focus(); };
 $('#tempPathInput').onkeydown = (event) => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.isComposing) { event.preventDefault(); openTempFolders(); } };
 $('#tempKeepTabs').onchange = (event) => { state.batchKeepTabs = event.target.checked; try { localStorage.setItem('folderPathBatchKeepTabs', String(state.batchKeepTabs)); } catch {} };
 $('#tempOpenButton').onclick = openTempFolders;
