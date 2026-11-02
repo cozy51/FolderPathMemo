@@ -16,12 +16,12 @@
       <section class="controls">
         <label class="search"><span>⌕</span><input id="searchInput" type="search" placeholder="フォルダ名・メモ・パス・タグを検索" autofocus /></label>
         <div class="view-tabs" role="tablist"><button class="view-tab active" data-view="all" type="button">すべて <span id="allCount">0</span></button><button class="view-tab" data-view="favorite" type="button">★ お気に入り <span id="favoriteCount">0</span></button><button class="view-tab" data-view="history" type="button">履歴 <span id="historyCount">0</span></button></div>
-        <label class="sort-control"><span>並び順</span><select id="sortSelect"><option value="registered-desc">登録日時（新しい順）</option><option value="path-asc">パス順</option><option value="name-asc">フォルダ名順</option><option value="count-desc">開いた回数順（多い順）</option></select></label>
+        <label class="sort-control"><span>並び順</span><select id="sortSelect"><option value="registered-desc">登録日時（新しい順）</option><option value="path-asc">パス順</option><option value="name-asc">フォルダ名順</option><option value="count-desc">開いた回数順（多い順）</option><option value="count-asc">開いた回数順（少ない順）</option></select></label>
       </section>
       <div id="tagFilters" class="tag-filters" aria-label="タグフィルター"></div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th class="star-col">★</th><th>フォルダ名 / メモ</th><th>タグ</th><th>パス</th><th class="action-col">操作</th></tr></thead>
+          <thead><tr><th class="star-col">★</th><th class="name-col">フォルダ名</th><th class="memo-col">メモ</th><th class="count-col sortable" title="クリックで開いた回数順に並べ替え"><button id="countSortButton" type="button" class="sort-header">回数<span id="countSortMark" class="sort-mark">⇅</span></button></th><th class="opened-col">最終利用日時</th><th class="tags-col">タグ</th><th class="path-col">パス</th><th class="action-col">操作</th></tr></thead>
           <tbody id="tableBody"></tbody>
         </table>
         <div id="emptyState" class="empty" hidden>条件に合うフォルダーがありません。</div>

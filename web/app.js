@@ -1,4 +1,4 @@
-const APP_VERSION = '2.6.0';
+const APP_VERSION = '2.6.1';
 const state = { items: [], query: '', view: 'all', tag: '', sort: 'registered-desc', tagSortKeys: {}, backupSignatures: {}, batchPaths: [], batchKeepTabs: true, openLog: {} };
 const $ = (selector) => document.querySelector(selector);
 const dialog = $('#pathDialog');
@@ -87,6 +87,8 @@ async function recordOpened(paths) {
   await persist(); render();
 }
 function formatOpenedAt(time) { if (!time) return ''; const date = new Date(time); const pad = (value) => String(value).padStart(2, '0'); return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`; }
+function openCountCell(count, lastOpenedAt) { const td = cell('open-count'); if (count > 0) td.append(openCountBadge(count, lastOpenedAt)); return td; }
+function openedAtCell(time) { const td = cell('opened-at', time ? formatOpenedAt(time) : '—'); td.classList.toggle('none', !time); return td; }
 function openCountBadge(count, lastOpenedAt) { const badge = document.createElement('span'); badge.className = 'open-count-badge'; badge.textContent = `${count}回`; badge.title = `開いた回数：${count}回${lastOpenedAt ? `・最終：${formatOpenedAt(lastOpenedAt)}` : ''}`; return badge; }
 function makeSignatures() { const signatures = Object.fromEntries(state.items.map((item) => [item.id, JSON.stringify(item)])); if (Object.keys(state.tagSortKeys).length) signatures.__tagSortKeys = JSON.stringify(state.tagSortKeys); if (state.batchPaths.length) signatures.__batchOpen = JSON.stringify(state.batchPaths); if (Object.keys(state.openLog).length) signatures.__openLog = JSON.stringify(state.openLog); return signatures; }
 function updateBackupCount() { const current = makeSignatures(); const ids = new Set([...Object.keys(current), ...Object.keys(state.backupSignatures)]); const count = [...ids].filter((id) => current[id] !== state.backupSignatures[id]).length; const badge = $('#backupChangeCount'); badge.textContent = count; badge.classList.toggle('clean', count === 0); badge.title = `前回バックアップから ${count} 件変更`; }
@@ -167,6 +169,7 @@ function openTagEditor() {
 function registeredAt(item) { return Number(item.createdAt) || Number(item.updatedAt) || 0; }
 function compareItems(a, b) {
   if (state.sort === 'count-desc') return (b.openCount ?? 0) - (a.openCount ?? 0) || (b.lastOpenedAt ?? 0) - (a.lastOpenedAt ?? 0);
+  if (state.sort === 'count-asc') return (a.openCount ?? 0) - (b.openCount ?? 0) || (b.lastOpenedAt ?? 0) - (a.lastOpenedAt ?? 0);
   if (state.view === 'history') return (b.lastOpenedAt ?? 0) - (a.lastOpenedAt ?? 0);
   if (state.sort === 'path-asc') return a.path.localeCompare(b.path, 'ja', { numeric: true, sensitivity: 'base' }) || registeredAt(b) - registeredAt(a);
   if (state.sort === 'name-asc') return a.name.localeCompare(b.name, 'ja', { numeric: true, sensitivity: 'base' }) || registeredAt(b) - registeredAt(a);
@@ -174,6 +177,7 @@ function compareItems(a, b) {
 }
 
 function render() {
+  $('#sortSelect').value = state.sort; $('#countSortMark').textContent = state.sort === 'count-desc' ? '▼' : state.sort === 'count-asc' ? '▲' : '⇅'; $('#countSortButton').classList.toggle('active', state.sort.startsWith('count-'));
   const allTags = [...new Set(state.items.flatMap((item) => item.tags ?? []))].sort(compareTags);
   const editTags = document.createElement('button'); editTags.type = 'button'; editTags.className = 'tag-edit-button'; editTags.textContent = '⚙ タグ設定'; editTags.title = 'タグ名・よみがなを編集'; editTags.onclick = openTagEditor;
   $('#tagFilters').replaceChildren(editTags, ...allTags.map((tag) => { const button = document.createElement('button'); button.type = 'button'; button.className = `tag-chip${state.tag === tag ? ' active' : ''}`; button.textContent = `# ${tag}`; decorateTag(button, tag); button.onclick = () => { state.tag = state.tag === tag ? '' : tag; render(); }; return button; }));
@@ -189,8 +193,8 @@ function render() {
     if (item.unregistered) { $('#tableBody').append(renderUnregisteredRow(item)); return; }
     const row = document.createElement('tr'); row.tabIndex = 0;
     const star = cell('star', item.favorite ? '★' : '☆'); star.onclick = async (event) => { event.stopPropagation(); item.favorite = !item.favorite; item.updatedAt = Date.now(); await persist(); render(); }; row.append(star);
-    const info = cell('info'); const titleLine = document.createElement('div'); titleLine.className = 'folder-title-line'; const name = document.createElement('div'); name.className = 'folder-name'; name.textContent = item.name; titleLine.append(name); if (item.openCount > 0) titleLine.append(openCountBadge(item.openCount, item.lastOpenedAt)); const fileTotal = normalizeFiles(item.files).length; if (fileTotal > 0) { const fileCount = document.createElement('span'); fileCount.className = 'file-count-badge'; fileCount.textContent = `ファイル ${fileTotal}件`; fileCount.title = `登録ファイル数：${fileTotal}件`; titleLine.append(fileCount); } info.append(titleLine);
-    if (item.memo) { const memo = document.createElement('div'); memo.className = 'memo'; memo.textContent = item.memo; info.append(memo); } row.append(info);
+    const info = cell('info'); const titleLine = document.createElement('div'); titleLine.className = 'folder-title-line'; const name = document.createElement('div'); name.className = 'folder-name'; name.textContent = item.name; titleLine.append(name); const fileTotal = normalizeFiles(item.files).length; if (fileTotal > 0) { const fileCount = document.createElement('span'); fileCount.className = 'file-count-badge'; fileCount.textContent = `ファイル ${fileTotal}件`; fileCount.title = `登録ファイル数：${fileTotal}件`; titleLine.append(fileCount); } info.append(titleLine);
+    const memo = cell('memo-cell'); if (item.memo) { const text = document.createElement('div'); text.className = 'memo'; text.textContent = item.memo; text.title = item.memo; memo.append(text); } row.append(info, memo, openCountCell(item.openCount ?? 0, item.lastOpenedAt), openedAtCell(item.lastOpenedAt));
     const tags = cell('tags'); (item.tags ?? []).forEach((tag) => { const badge = document.createElement('button'); badge.type = 'button'; badge.className = `tag${state.tag === tag ? ' active' : ''}`; badge.textContent = tag; decorateTag(badge, tag); badge.onclick = (event) => { event.stopPropagation(); state.tag = state.tag === tag ? '' : tag; render(); }; tags.append(badge); }); row.append(tags);
     row.append(cell('path', item.path));
     const actions = cell('actions');
@@ -202,7 +206,7 @@ function render() {
     row.title = fileTotal > 0 ? 'クリックでファイルリスト表示・ダブルクリックで編集' : 'ファイルは未登録です・ダブルクリックで編集';
     row.onclick = (event) => { if (event.target.closest('button')) return; if (fileTotal === 0) { showToast('ファイルは登録されていません'); return; } row.classList.toggle('show-files'); };
     row.ondblclick = (event) => { if (event.target.closest('button')) return; event.preventDefault(); clearTimeout(row.openTimer); openEditor(item); };
-    row.onkeydown = (event) => { if (event.key !== 'Enter') return; if (fileTotal === 0) { showToast('ファイルは登録されていません'); return; } row.classList.toggle('show-files'); }; $('#tableBody').append(row); if (fileTotal > 0) { const fileRow = document.createElement('tr'); fileRow.className = 'file-list-row'; const fileCell = document.createElement('td'); fileCell.colSpan = 5; fileCell.append(createFileList(item)); fileRow.append(fileCell); $('#tableBody').append(fileRow); }
+    row.onkeydown = (event) => { if (event.key !== 'Enter') return; if (fileTotal === 0) { showToast('ファイルは登録されていません'); return; } row.classList.toggle('show-files'); }; $('#tableBody').append(row); if (fileTotal > 0) { const fileRow = document.createElement('tr'); fileRow.className = 'file-list-row'; const fileCell = document.createElement('td'); fileCell.colSpan = 8; fileCell.append(createFileList(item)); fileRow.append(fileCell); $('#tableBody').append(fileRow); }
   });
 }
 function unregisteredHistory() { const registered = new Set(state.items.map((item) => pathKey(item.path))); return Object.entries(state.openLog).filter(([key]) => !registered.has(key)).map(([, entry]) => entry); }
@@ -210,8 +214,8 @@ function unregisteredHistory() { const registered = new Set(state.items.map((ite
 function renderUnregisteredRow(entry) {
   const row = document.createElement('tr'); row.className = 'unregistered-row'; row.title = '一時的に開いたフォルダー（未登録）・ダブルクリックで登録';
   row.append(cell('star', ''));
-  const info = cell('info'); const titleLine = document.createElement('div'); titleLine.className = 'folder-title-line'; const name = document.createElement('div'); name.className = 'folder-name'; name.textContent = entry.name; const badge = document.createElement('span'); badge.className = 'unregistered-badge'; badge.textContent = '未登録'; titleLine.append(name, badge, openCountBadge(entry.openCount, entry.lastOpenedAt)); info.append(titleLine);
-  const meta = document.createElement('div'); meta.className = 'memo open-history-meta'; meta.textContent = `一時的に開いた履歴・最終 ${formatOpenedAt(entry.lastOpenedAt)}${entry.firstOpenedAt && formatOpenedAt(entry.firstOpenedAt) !== formatOpenedAt(entry.lastOpenedAt) ? `（初回 ${formatOpenedAt(entry.firstOpenedAt)}）` : ''}`; info.append(meta); row.append(info, cell('tags'), cell('path', entry.path));
+  const info = cell('info'); const titleLine = document.createElement('div'); titleLine.className = 'folder-title-line'; const name = document.createElement('div'); name.className = 'folder-name'; name.textContent = entry.name; const badge = document.createElement('span'); badge.className = 'unregistered-badge'; badge.textContent = '未登録'; titleLine.append(name, badge); info.append(titleLine);
+  const memo = cell('memo-cell'); const meta = document.createElement('div'); meta.className = 'memo open-history-meta'; meta.textContent = '一時的に開いた履歴'; memo.append(meta); const opened = openedAtCell(entry.lastOpenedAt); if (entry.firstOpenedAt && formatOpenedAt(entry.firstOpenedAt) !== formatOpenedAt(entry.lastOpenedAt)) opened.title = `初回：${formatOpenedAt(entry.firstOpenedAt)}`; row.append(info, memo, openCountCell(entry.openCount, entry.lastOpenedAt), opened, cell('tags'), cell('path', entry.path));
   const actions = cell('actions');
   const copy = document.createElement('button'); copy.textContent = 'コピー'; copy.onclick = async () => { await navigator.clipboard.writeText(entry.path); showToast('コピーしました'); };
   const open = document.createElement('button'); open.className = 'open'; open.textContent = '開く'; open.onclick = () => openFolder(entry);
@@ -231,6 +235,8 @@ $('#pathForm').onsubmit = async (event) => {
 $('#addButton').onclick = () => openEditor(); $('#addFileButton').onclick = () => addFileRow(); $('#nameInput').oninput = () => { nameAutoFill = $('#nameInput').value.trim() === deriveFolderName($('#pathInput').value); }; $('#pathInput').oninput = syncNameFromPath; $('#pathInput').onchange = () => { const cleaned = cleanFolderPath($('#pathInput').value); if (cleaned && cleaned !== $('#pathInput').value) { $('#pathInput').value = cleaned; syncNameFromPath(); } }; $('#closeDialog').onclick = $('#cancelButton').onclick = () => dialog.close();
 $('#searchInput').oninput = (event) => { state.query = event.target.value; render(); };
 $('#sortSelect').onchange = (event) => { state.sort = event.target.value; render(); };
+// 「回数」の見出しをクリックすると、多い順 → 少ない順 → 登録日時順 の順に切り替える
+$('#countSortButton').onclick = () => { state.sort = state.sort === 'count-desc' ? 'count-asc' : state.sort === 'count-asc' ? 'registered-desc' : 'count-desc'; render(); };
 $('#closeTagDialog').onclick = $('#cancelTagButton').onclick = () => $('#tagDialog').close();
 $('#tagForm').onsubmit = async (event) => {
   event.preventDefault(); const rows = [...document.querySelectorAll('#tagRows .tag-edit-row')];
