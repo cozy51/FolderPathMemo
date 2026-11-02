@@ -70,7 +70,7 @@
     <dialog id="tempDialog" class="batch-dialog temp-dialog">
       <div class="batch-content">
         <div class="dialog-header"><div><p>OPEN TEMPORARILY</p><h2>フォルダーを一時的に開く</h2></div><button id="closeTempDialog" class="close-button" type="button" aria-label="閉じる">×</button></div>
-        <p class="tag-dialog-hint">パスを貼り付けると、登録せずにその場で開きます（1行に1つ）。前後の引用符・括弧などの余計な文字や、末尾のファイル名は自動で取り除きます。</p>
+        <p class="tag-dialog-hint">パスを貼り付けると、登録せずにその場で開きます（1行に1つ）。パスではない行（「例」などのメモ）は無視します。前後の引用符・括弧などの余計な文字や、末尾のファイル名は自動で取り除きます。</p>
         <textarea id="tempPathInput" class="temp-input" rows="5" spellcheck="false" placeholder="例：&quot;\\server\share\フォルダー\資料.xlsx&quot;" aria-label="開くフォルダーパス"></textarea>
         <p id="tempPreviewLabel" class="temp-preview-label"></p>
         <ol id="tempPreview" class="batch-rows temp-preview"></ol>
