@@ -1,4 +1,4 @@
-const APP_VERSION = '2.6.4';
+const APP_VERSION = '2.6.5';
 const state = { items: [], query: '', view: 'all', tag: '', sort: 'registered-desc', tagSortKeys: {}, backupSignatures: {}, batchPaths: [], batchKeepTabs: true, openLog: {} };
 const $ = (selector) => document.querySelector(selector);
 const dialog = $('#pathDialog');
@@ -216,7 +216,7 @@ function renderUnregisteredRow(entry) {
   // 「未登録」はファイルの件数バッジと紛れないよう、★の列に表示する
   const mark = cell('star unregistered-mark'); const badge = document.createElement('span'); badge.className = 'unregistered-badge'; badge.textContent = '未登録'; badge.title = '一時的に開いたフォルダー（未登録）'; mark.append(badge); row.append(mark);
   const info = cell('info'); const titleLine = document.createElement('div'); titleLine.className = 'folder-title-line'; const name = document.createElement('div'); name.className = 'folder-name'; name.textContent = entry.name; titleLine.append(name); info.append(titleLine);
-  const memo = cell('memo-cell'); const meta = document.createElement('div'); meta.className = 'memo open-history-meta'; meta.textContent = '一時的に開いた履歴'; memo.append(meta); const opened = openedAtCell(entry.lastOpenedAt); if (entry.firstOpenedAt && formatOpenedAt(entry.firstOpenedAt) !== formatOpenedAt(entry.lastOpenedAt)) opened.title = `初回：${formatOpenedAt(entry.firstOpenedAt)}`; row.append(info, memo, openCountCell(entry.openCount, entry.lastOpenedAt), opened, cell('tags'), cell('path', entry.path));
+  const memo = cell('memo-cell'); const meta = document.createElement('div'); meta.className = 'memo open-history-meta'; meta.textContent = '※ 一時的に開いた履歴 ※'; memo.append(meta); const opened = openedAtCell(entry.lastOpenedAt); if (entry.firstOpenedAt && formatOpenedAt(entry.firstOpenedAt) !== formatOpenedAt(entry.lastOpenedAt)) opened.title = `初回：${formatOpenedAt(entry.firstOpenedAt)}`; row.append(info, memo, openCountCell(entry.openCount, entry.lastOpenedAt), opened, cell('tags'), cell('path', entry.path));
   const actions = cell('actions');
   const copy = document.createElement('button'); copy.textContent = 'コピー'; copy.onclick = async () => { await navigator.clipboard.writeText(entry.path); showToast('コピーしました'); };
   const open = document.createElement('button'); open.className = 'open'; open.textContent = '開く'; open.onclick = () => openFolder(entry);
