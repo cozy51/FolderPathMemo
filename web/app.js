@@ -1,4 +1,4 @@
-const APP_VERSION = '2.3.2';
+const APP_VERSION = '2.4.0';
 const state = { items: [], query: '', view: 'all', tag: '', sort: 'registered-desc', tagSortKeys: {}, backupSignatures: {}, batchPaths: [], batchKeepTabs: true };
 const $ = (selector) => document.querySelector(selector);
 const dialog = $('#pathDialog');
@@ -38,13 +38,25 @@ function parseFolderPath(text) {
 function cleanFolderPath(text) { return parseFolderPath(text).path; }
 // \\server\share… または C:\… の形のときだけパスとみなす（「例」などの説明行は一覧に入れない）
 function isFolderPath(path) { return /^\\\\[^\\\s]+\\[^\\]+|^[A-Za-z]:\\/.test(path); }
-// 1行に1つのパスを整形する。同じフォルダーは1件にまとめ、取り除いたファイル名はそのフォルダーに集める
+// パスではない行から、ファイル名だけを取り出す（例：「ファイル名：資料.xlsx」→ 資料.xlsx）。見つからなければ空
+function extractFileName(line) {
+  let name = String(line ?? '').replace(/[​﻿]/g, '').trim();
+  name = name.replace(/^.*?(ファイル名?|file\s*name|ファイル)\s*[:：=＝]\s*/i, '');
+  name = name.replace(/^.*[\\/]/, '').trim();
+  while (name && PATH_OPENERS.includes(name[0])) name = name.slice(1).trim();
+  while (name && (PATH_CLOSERS.includes(name.at(-1)) || /[\s。、,，;；]/.test(name.at(-1)))) name = name.slice(0, -1).trimEnd();
+  return name && !/[:*?"<>|：]/.test(name) && FILE_EXTENSION.test(name) ? name : '';
+}
+// 1行に1つのパスを整形する。同じフォルダーは1件にまとめ、取り除いたファイル名はそのフォルダーに集める。
+// パスとは別の行に書かれたファイル名（「ファイル名：〜.xlsx」など）は、直前のパス（まだなければ次のパス）のファイルとして扱う
 function parseFolderPaths(text) {
-  const entries = new Map();
+  const entries = new Map(); let current = null; let pending = [];
+  const addFile = (entry, file) => { if (file && !entry.files.includes(file)) entry.files.push(file); };
   for (const line of String(text ?? '').split(/\r?\n/)) {
-    const { path, file } = parseFolderPath(line); if (!isFolderPath(path)) continue;
+    const { path, file } = parseFolderPath(line);
+    if (!isFolderPath(path)) { const name = extractFileName(line); if (name) { if (current) addFile(current, name); else pending.push(name); } continue; }
     const key = path.toLocaleLowerCase(); if (!entries.has(key)) entries.set(key, { path, files: [] });
-    const entry = entries.get(key); if (file && !entry.files.includes(file)) entry.files.push(file);
+    current = entries.get(key); addFile(current, file); pending.forEach((name) => addFile(current, name)); pending = [];
   }
   return [...entries.values()];
 }
