@@ -1,4 +1,4 @@
-const APP_VERSION = '2.4.1';
+const APP_VERSION = '2.5.0';
 const state = { items: [], query: '', view: 'all', tag: '', sort: 'registered-desc', tagSortKeys: {}, backupSignatures: {}, batchPaths: [], batchKeepTabs: true };
 const $ = (selector) => document.querySelector(selector);
 const dialog = $('#pathDialog');
@@ -38,14 +38,16 @@ function parseFolderPath(text) {
 function cleanFolderPath(text) { return parseFolderPath(text).path; }
 // \\server\share… または C:\… の形のときだけパスとみなす（「例」などの説明行は一覧に入れない）
 function isFolderPath(path) { return /^\\\\[^\\\s]+\\[^\\]+|^[A-Za-z]:\\/.test(path); }
-// パスではない行から、ファイル名だけを取り出す（例：「ファイル名：資料.xlsx」→ 資料.xlsx）。見つからなければ空
+// パスではない行から、ファイル名だけを取り出す（例：「ファイル名：資料.xlsx」→ 資料.xlsx）。見つからなければ空。
+// 「ファイル名：」のように見出しが付いていれば、拡張子がなくてもファイル名とみなす（例：「ファイル名：2026-V74-N-023-00」）
 function extractFileName(line) {
-  let name = String(line ?? '').replace(/[​﻿]/g, '').trim();
-  name = name.replace(/^.*?(ファイル名?|file\s*name|ファイル)\s*[:：=＝]\s*/i, '');
+  let name = String(line ?? '').replace(/[\u200b\ufeff]/g, '').trim();
+  const label = /^.*?(ファイル名?|file\s*name|ファイル)\s*[:：=＝]\s*/i; const labeled = label.test(name);
+  name = name.replace(label, '');
   name = name.replace(/^.*[\\/]/, '').trim();
   while (name && PATH_OPENERS.includes(name[0])) name = name.slice(1).trim();
   while (name && (PATH_CLOSERS.includes(name.at(-1)) || /[\s。、,，;；]/.test(name.at(-1)))) name = name.slice(0, -1).trimEnd();
-  return name && !/[:*?"<>|：]/.test(name) && FILE_EXTENSION.test(name) ? name : '';
+  return name && !/[:*?"<>|：]/.test(name) && (labeled || FILE_EXTENSION.test(name)) ? name : '';
 }
 // 1行に1つのパスを整形する。同じフォルダーは1件にまとめ、取り除いたファイル名はそのフォルダーに集める。
 // パスとは別の行に書かれたファイル名（「ファイル名：〜.xlsx」など）は、直前のパス（まだなければ次のパス）のファイルとして扱う
@@ -260,7 +262,10 @@ function renderTempPreview() {
   const entries = parseFolderPaths($('#tempPathInput').value); const paths = entries.map(({ path }) => path);
   $('#tempPreview').replaceChildren(...entries.map(({ path, files }) => {
     const row = document.createElement('li'); row.className = 'temp-row';
-    const folder = document.createElement('div'); folder.className = 'temp-folder'; folder.textContent = path; row.append(folder);
+    const head = document.createElement('div'); head.className = 'temp-folder-row';
+    const folder = document.createElement('div'); folder.className = 'temp-folder'; folder.textContent = path;
+    const open = document.createElement('button'); open.type = 'button'; open.className = 'temp-folder-open'; open.textContent = '開く'; open.title = 'このフォルダーだけを開く'; open.onclick = () => openTempFolders([path]);
+    head.append(folder, open); row.append(head);
     files.forEach((file) => {
       const line = document.createElement('div'); line.className = 'temp-file';
       const name = document.createElement('span'); name.className = 'temp-file-name'; name.textContent = `📄 ${file}`; name.title = file;
@@ -275,8 +280,9 @@ function renderTempPreview() {
   return paths;
 }
 function openTempDialog() { $('#tempKeepTabs').checked = state.batchKeepTabs; renderTempPreview(); $('#tempDialog').showModal(); $('#tempPathInput').focus(); $('#tempPathInput').select(); }
-async function openTempFolders() {
-  const paths = renderTempPreview(); if (!paths.length) return;
+// targets を渡したときは、そのフォルダーだけを開く（一覧の各行の「開く」ボタン）
+async function openTempFolders(targets) {
+  const all = renderTempPreview(); const paths = Array.isArray(targets) ? targets : all; if (!paths.length) return;
   const markOpened = async (opened) => { const now = Date.now(); const keys = new Set([...opened].map((path) => path.toLocaleLowerCase())); const hits = state.items.filter((item) => keys.has(cleanFolderPath(item.path).toLocaleLowerCase())); hits.forEach((item) => { item.lastOpenedAt = now; item.openCount = (item.openCount ?? 0) + 1; }); if (hits.length) { await persist(); render(); } };
   $('#tempOpenButton').disabled = true;
   try {
@@ -297,7 +303,7 @@ $('#tempButton').onclick = openTempDialog; $('#closeTempDialog').onclick = $('#t
 ['input', 'change', 'paste', 'cut', 'drop', 'compositionend'].forEach((type) => $('#tempPathInput').addEventListener(type, () => setTimeout(renderTempPreview))); $('#tempClearButton').onclick = () => { $('#tempPathInput').value = ''; renderTempPreview(); $('#tempPathInput').focus(); };
 $('#tempPathInput').onkeydown = (event) => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.isComposing) { event.preventDefault(); openTempFolders(); } };
 $('#tempKeepTabs').onchange = (event) => { state.batchKeepTabs = event.target.checked; try { localStorage.setItem('folderPathBatchKeepTabs', String(state.batchKeepTabs)); } catch {} };
-$('#tempOpenButton').onclick = openTempFolders;
+$('#tempOpenButton').onclick = () => openTempFolders();
 // 以前の拡張機能の画面で使っていたデータと設定。Webアプリに何も保存されていないときに一度だけ引き継ぐ
 const LEGACY_KEYS = ['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState', 'folderPathBatchOpen', 'folderPathDriveClientId', 'folderPathDriveFolderId', 'folderPathDriveAutoSync', 'folderPathDriveSyncedAt', 'folderPathDriveSyncState'];
 async function importLegacyData() {
