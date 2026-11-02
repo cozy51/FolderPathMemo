@@ -1,4 +1,4 @@
-const APP_VERSION = '2.3.1';
+const APP_VERSION = '2.3.2';
 const state = { items: [], query: '', view: 'all', tag: '', sort: 'registered-desc', tagSortKeys: {}, backupSignatures: {}, batchPaths: [], batchKeepTabs: true };
 const $ = (selector) => document.querySelector(selector);
 const dialog = $('#pathDialog');
@@ -36,11 +36,13 @@ function parseFolderPath(text) {
   return { path: path.replace(/(?<=[^\\/:])[\\/]+$/, ''), file };
 }
 function cleanFolderPath(text) { return parseFolderPath(text).path; }
+// \\server\share… または C:\… の形のときだけパスとみなす（「例」などの説明行は一覧に入れない）
+function isFolderPath(path) { return /^\\\\[^\\\s]+\\[^\\]+|^[A-Za-z]:\\/.test(path); }
 // 1行に1つのパスを整形する。同じフォルダーは1件にまとめ、取り除いたファイル名はそのフォルダーに集める
 function parseFolderPaths(text) {
   const entries = new Map();
   for (const line of String(text ?? '').split(/\r?\n/)) {
-    const { path, file } = parseFolderPath(line); if (!path) continue;
+    const { path, file } = parseFolderPath(line); if (!isFolderPath(path)) continue;
     const key = path.toLocaleLowerCase(); if (!entries.has(key)) entries.set(key, { path, files: [] });
     const entry = entries.get(key); if (file && !entry.files.includes(file)) entry.files.push(file);
   }
