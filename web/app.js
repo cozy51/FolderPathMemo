@@ -1,4 +1,4 @@
-const APP_VERSION = '2.6.2';
+const APP_VERSION = '2.6.3';
 const state = { items: [], query: '', view: 'all', tag: '', sort: 'registered-desc', tagSortKeys: {}, backupSignatures: {}, batchPaths: [], batchKeepTabs: true, openLog: {} };
 const $ = (selector) => document.querySelector(selector);
 const dialog = $('#pathDialog');
@@ -248,7 +248,7 @@ $('#tagForm').onsubmit = async (event) => {
   state.tagSortKeys = Object.fromEntries(edits.filter(({ reading }) => reading).map(({ tag, reading }) => [tag, reading]));
   if (state.tag) state.tag = renamed[state.tag] ?? state.tag; await persist(); $('#tagDialog').close(); render(); showToast('タグを更新しました');
 };
-document.querySelectorAll('.view-tab').forEach((button) => button.onclick = () => { state.view = button.dataset.view; document.querySelectorAll('.view-tab').forEach((tab) => tab.classList.toggle('active', tab === button)); render(); });
+document.querySelectorAll('.view-tab').forEach((button) => button.onclick = () => { state.view = button.dataset.view; document.body.dataset.view = state.view; document.querySelectorAll('.view-tab').forEach((tab) => tab.classList.toggle('active', tab === button)); render(); });
 function buildBackup() { return { filename: backupFilename(), content: JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), items: state.items, tagSortKeys: state.tagSortKeys, batchOpen: state.batchPaths, openLog: state.openLog }, null, 2), signatures: makeSignatures() }; }
 async function markBackedUp(signatures) { state.backupSignatures = signatures; await store.set({ folderPathBackupState: state.backupSignatures }); updateBackupCount(); }
 async function applyBackup(data) { if (!Array.isArray(data?.items) || data.items.some((item) => typeof item.name !== 'string' || typeof item.path !== 'string')) throw new Error('バックアップを読み込めませんでした'); state.items = data.items.map((item) => { const updatedAt = Number(item.updatedAt) || Date.now(); return { id: item.id || crypto.randomUUID(), name: item.name, path: item.path, memo: typeof item.memo === 'string' ? item.memo : '', tags: Array.isArray(item.tags) ? item.tags : [], favorite: Boolean(item.favorite), createdAt: Number(item.createdAt) || updatedAt, updatedAt, files: normalizeFiles(item.files), lastOpenedAt: Number(item.lastOpenedAt) || 0, openCount: Number(item.openCount) || 0 }; }); state.tagSortKeys = data.tagSortKeys && typeof data.tagSortKeys === 'object' ? data.tagSortKeys : {}; if (Array.isArray(data.batchOpen)) state.batchPaths = normalizeBatchPaths(data.batchOpen); if (data.openLog && typeof data.openLog === 'object') state.openLog = normalizeOpenLog(data.openLog); await persist(); render(); showToast(`${state.items.length}件を復元しました`); }
