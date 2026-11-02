@@ -29,3 +29,13 @@
 .name-col{width:20%}.memo-col{width:16%}.tags-col{width:13%}.count-col{width:72px;text-align:center}.opened-col{width:136px}.memo-cell .memo{margin-top:0}td.open-count{text-align:center}.opened-at{color:#4f5d74;font:12px Consolas,"Yu Gothic UI",monospace;white-space:nowrap}.opened-at.none{color:#c0c7d2}
 .sort-header{display:inline-flex;align-items:center;gap:3px;padding:3px 6px;border:0;border-radius:6px;background:transparent;color:inherit;font:inherit;font-weight:700;cursor:pointer}.sort-header:hover{background:#e9eef6;color:#14213d}.sort-header.active{color:#17663d;background:#eefaf3}.sort-mark{font-size:10px}
 .unregistered-mark{padding:7px 4px}.unregistered-mark .unregistered-badge{display:inline-block;padding:2px 5px;font-size:10px;line-height:1.3}
+/* 表示中のタブが一目でわかるよう、お気に入りは薄い黄色、履歴は薄い紫で背景全体を色分けする（Drive未接続の警告色は優先） */
+body[data-view="favorite"]{--view-tint:#fff7d1;--view-head:#fdeeb5;--view-row:#fffdf2;--view-accent:#a86b00;background:var(--view-tint)}
+body[data-view="history"]{--view-tint:#f1ebfd;--view-head:#e5dafb;--view-row:#fcfaff;--view-accent:#6b46c1;background:var(--view-tint)}
+body[data-view][data-drive-state="disconnected"]{background:#ffe8cc}
+body:not([data-view="all"]) .table-wrap{border-color:var(--view-head)}
+body:not([data-view="all"]) th{background:var(--view-head);color:var(--view-accent)}
+body:not([data-view="all"]) tbody tr:not(.file-list-row) td{background:var(--view-row)}
+body:not([data-view="all"]) .view-tabs{border-color:var(--view-head)}
+body:not([data-view="all"]) .view-tab.active{color:var(--view-accent);border-color:var(--view-accent)}
+body:not([data-view="all"]) .view-tab.active span{background:var(--view-head);color:var(--view-accent)}
