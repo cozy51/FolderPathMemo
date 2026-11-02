@@ -37,5 +37,7 @@ body:not([data-view="all"]) .table-wrap{border-color:var(--view-head)}
 body:not([data-view="all"]) th{background:var(--view-head);color:var(--view-accent)}
 body:not([data-view="all"]) tbody tr:not(.file-list-row) td{background:var(--view-row)}
 body:not([data-view="all"]) .view-tabs{border-color:var(--view-head)}
-body:not([data-view="all"]) .view-tab.active{color:var(--view-accent);border-color:var(--view-accent)}
-body:not([data-view="all"]) .view-tab.active span{background:var(--view-head);color:var(--view-accent)}
+/* タブの文字色は選択前から固定：すべて=青、お気に入り=琥珀、履歴=紫（選択中は下線と太さで示す） */
+.view-tab[data-view="all"]{--tab-color:var(--blue);--tab-soft:#e3ecfd}.view-tab[data-view="favorite"]{--tab-color:#a86b00;--tab-soft:#fdeeb5}.view-tab[data-view="history"]{--tab-color:#6b46c1;--tab-soft:#e5dafb}
+.view-tab{color:var(--tab-color);opacity:.75}.view-tab:hover{opacity:1}.view-tab span{background:var(--tab-soft);color:var(--tab-color)}
+.view-tab.active{color:var(--tab-color);border-color:var(--tab-color);opacity:1}
