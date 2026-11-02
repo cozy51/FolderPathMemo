@@ -1,5 +1,5 @@
-const APP_VERSION = '2.5.0';
-const state = { items: [], query: '', view: 'all', tag: '', sort: 'registered-desc', tagSortKeys: {}, backupSignatures: {}, batchPaths: [], batchKeepTabs: true };
+const APP_VERSION = '2.6.0';
+const state = { items: [], query: '', view: 'all', tag: '', sort: 'registered-desc', tagSortKeys: {}, backupSignatures: {}, batchPaths: [], batchKeepTabs: true, openLog: {} };
 const $ = (selector) => document.querySelector(selector);
 const dialog = $('#pathDialog');
 let nameAutoFill = true;
@@ -72,8 +72,23 @@ function fuzzyMatch(text, query) {
   return true;
 }
 function showToast(message) { const toast = $('#toast'); const host = document.querySelector('dialog[open]') ?? document.body; if (toast.parentElement !== host) host.append(toast); toast.textContent = message; toast.classList.add('show'); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.classList.remove('show'), 1600); }
-async function persist() { await store.set({ folderPaths: state.items, folderPathTagSortKeys: state.tagSortKeys, folderPathBatchOpen: state.batchPaths }); updateBackupCount(); }
-function makeSignatures() { const signatures = Object.fromEntries(state.items.map((item) => [item.id, JSON.stringify(item)])); if (Object.keys(state.tagSortKeys).length) signatures.__tagSortKeys = JSON.stringify(state.tagSortKeys); if (state.batchPaths.length) signatures.__batchOpen = JSON.stringify(state.batchPaths); return signatures; }
+async function persist() { await store.set({ folderPaths: state.items, folderPathTagSortKeys: state.tagSortKeys, folderPathBatchOpen: state.batchPaths, folderPathOpenLog: state.openLog }); updateBackupCount(); }
+// 開いた履歴：登録済み・一時的に開いた・まとめて開いたNASフォルダーを、パスごとに回数と日時で記録する
+function pathKey(path) { const cleaned = cleanFolderPath(path) || String(path ?? '').trim(); return cleaned.replace(/[\\/]+$/, '').toLocaleLowerCase(); }
+// 履歴に残すのはNAS（\\server\share…）のパスだけ。ローカルドライブ（C:\…）は記録しない
+function isNasPath(path) { return /^\\\\[^\\\s]+\\/.test(String(path ?? '').trim()); }
+function normalizeOpenLog(log) { if (!log || typeof log !== 'object' || Array.isArray(log)) return {}; return Object.fromEntries(Object.values(log).filter((entry) => entry && typeof entry.path === 'string' && isNasPath(entry.path)).map((entry) => { const lastOpenedAt = Number(entry.lastOpenedAt) || 0; return [pathKey(entry.path), { path: entry.path.trim(), count: Math.max(1, Number(entry.count) || 1), firstOpenedAt: Number(entry.firstOpenedAt) || lastOpenedAt, lastOpenedAt }]; })); }
+function findItemByPath(path) { const key = pathKey(path); return state.items.find((item) => pathKey(item.path) === key); }
+function openLogEntry(path) { return state.openLog[pathKey(path)]; }
+async function recordOpened(paths) {
+  const now = Date.now(); const keys = new Set();
+  [...paths].forEach((raw) => { const path = cleanFolderPath(raw) || String(raw ?? '').trim(); const key = pathKey(path); if (!key || keys.has(key)) return; keys.add(key); if (!isNasPath(path)) return; const entry = state.openLog[key]; state.openLog[key] = { path, count: (entry?.count ?? 0) + 1, firstOpenedAt: entry?.firstOpenedAt ?? now, lastOpenedAt: now }; });
+  state.items.filter((item) => keys.has(pathKey(item.path))).forEach((item) => { item.lastOpenedAt = now; item.openCount = (item.openCount ?? 0) + 1; });
+  await persist(); render();
+}
+function formatOpenedAt(time) { if (!time) return ''; const date = new Date(time); const pad = (value) => String(value).padStart(2, '0'); return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`; }
+function openCountBadge(count, lastOpenedAt) { const badge = document.createElement('span'); badge.className = 'open-count-badge'; badge.textContent = `${count}回`; badge.title = `開いた回数：${count}回${lastOpenedAt ? `・最終：${formatOpenedAt(lastOpenedAt)}` : ''}`; return badge; }
+function makeSignatures() { const signatures = Object.fromEntries(state.items.map((item) => [item.id, JSON.stringify(item)])); if (Object.keys(state.tagSortKeys).length) signatures.__tagSortKeys = JSON.stringify(state.tagSortKeys); if (state.batchPaths.length) signatures.__batchOpen = JSON.stringify(state.batchPaths); if (Object.keys(state.openLog).length) signatures.__openLog = JSON.stringify(state.openLog); return signatures; }
 function updateBackupCount() { const current = makeSignatures(); const ids = new Set([...Object.keys(current), ...Object.keys(state.backupSignatures)]); const count = [...ids].filter((id) => current[id] !== state.backupSignatures[id]).length; const badge = $('#backupChangeCount'); badge.textContent = count; badge.classList.toggle('clean', count === 0); badge.title = `前回バックアップから ${count} 件変更`; }
 function normalizeFiles(files) { return Array.isArray(files) ? files.map((file) => ({ name: String(file.name ?? '').trim(), memo: String(file.memo ?? '').trim() })).filter((file) => file.name || file.memo) : []; }
 function fileTypeInfo(filename) {
@@ -102,17 +117,17 @@ function backupFilename(now = new Date()) { const pad = (value) => String(value)
 async function openFolder(item) {
   try {
     const response = await openFolderWithExtension(item.path);
-    item.lastOpenedAt = Date.now(); item.openCount = (item.openCount ?? 0) + 1; await persist(); render();
+    await recordOpened([item.path]);
     showToast(response.openedInTab ? '新しいタブで開きました' : 'エクスプローラーで開きました');
   } catch (error) {
     await navigator.clipboard.writeText(item.path);
     showToast(await extensionReady ? `開けなかったためパスをコピーしました（${error.message}）` : 'パスをコピーしました（Explorerで開くには拡張機能が必要です）');
   }
 }
-function openEditor(item) {
+function openEditor(item, initialPath = '') {
   $('#dialogTitle').textContent = item ? 'フォルダーを編集' : 'フォルダーを登録';
   nameAutoFill = !item;
-  $('#itemId').value = item?.id ?? ''; $('#nameInput').value = item?.name ?? ''; $('#pathInput').value = item?.path ?? '';
+  $('#itemId').value = item?.id ?? ''; $('#nameInput').value = item?.name ?? ''; $('#pathInput').value = item?.path ?? initialPath;
   $('#memoInput').value = item?.memo ?? ''; editingTags = new Set(item?.tags ?? []); $('#tagsInput').value = ''; renderTagChoices(); $('#favoriteInput').checked = item?.favorite ?? false;
   renderFileRows(item?.files);
   syncNameFromPath();
@@ -151,7 +166,8 @@ function openTagEditor() {
 }
 function registeredAt(item) { return Number(item.createdAt) || Number(item.updatedAt) || 0; }
 function compareItems(a, b) {
-  if (state.view === 'history') return b.lastOpenedAt - a.lastOpenedAt;
+  if (state.sort === 'count-desc') return (b.openCount ?? 0) - (a.openCount ?? 0) || (b.lastOpenedAt ?? 0) - (a.lastOpenedAt ?? 0);
+  if (state.view === 'history') return (b.lastOpenedAt ?? 0) - (a.lastOpenedAt ?? 0);
   if (state.sort === 'path-asc') return a.path.localeCompare(b.path, 'ja', { numeric: true, sensitivity: 'base' }) || registeredAt(b) - registeredAt(a);
   if (state.sort === 'name-asc') return a.name.localeCompare(b.name, 'ja', { numeric: true, sensitivity: 'base' }) || registeredAt(b) - registeredAt(a);
   return registeredAt(b) - registeredAt(a) || a.name.localeCompare(b.name, 'ja');
@@ -161,16 +177,19 @@ function render() {
   const allTags = [...new Set(state.items.flatMap((item) => item.tags ?? []))].sort(compareTags);
   const editTags = document.createElement('button'); editTags.type = 'button'; editTags.className = 'tag-edit-button'; editTags.textContent = '⚙ タグ設定'; editTags.title = 'タグ名・よみがなを編集'; editTags.onclick = openTagEditor;
   $('#tagFilters').replaceChildren(editTags, ...allTags.map((tag) => { const button = document.createElement('button'); button.type = 'button'; button.className = `tag-chip${state.tag === tag ? ' active' : ''}`; button.textContent = `# ${tag}`; decorateTag(button, tag); button.onclick = () => { state.tag = state.tag === tag ? '' : tag; render(); }; return button; }));
-  $('#allCount').textContent = state.items.length; $('#favoriteCount').textContent = state.items.filter((item) => item.favorite).length; $('#historyCount').textContent = state.items.filter((item) => item.lastOpenedAt).length;
+  $('#allCount').textContent = state.items.length; $('#favoriteCount').textContent = state.items.filter((item) => item.favorite).length; const unregistered = unregisteredHistory(); $('#historyCount').textContent = state.items.filter((item) => item.lastOpenedAt).length + unregistered.length;
   const visible = state.items.filter((item) => state.view === 'all' || (state.view === 'favorite' && item.favorite) || (state.view === 'history' && item.lastOpenedAt))
     .filter((item) => !state.tag || item.tags?.includes(state.tag))
-    .filter((item) => fuzzyMatch([item.name, item.memo ?? '', item.path, ...(item.tags ?? []), fileSearchText(item)].join(' '), state.query))
-    .sort(compareItems);
-  $('#tableBody').replaceChildren(); $('#emptyState').hidden = visible.length > 0;
-  visible.forEach((item) => {
+    .filter((item) => fuzzyMatch([item.name, item.memo ?? '', item.path, ...(item.tags ?? []), fileSearchText(item)].join(' '), state.query));
+  // 履歴タブでは、一時的に開いた未登録のフォルダーも一緒に並べる
+  const rows = state.view === 'history' && !state.tag ? [...visible, ...unregistered.filter((entry) => fuzzyMatch(`${deriveFolderName(entry.path)} ${entry.path}`, state.query)).map((entry) => ({ unregistered: true, name: deriveFolderName(entry.path), path: entry.path, openCount: entry.count, lastOpenedAt: entry.lastOpenedAt, firstOpenedAt: entry.firstOpenedAt }))] : visible;
+  rows.sort(compareItems);
+  $('#tableBody').replaceChildren(); $('#emptyState').hidden = rows.length > 0;
+  rows.forEach((item) => {
+    if (item.unregistered) { $('#tableBody').append(renderUnregisteredRow(item)); return; }
     const row = document.createElement('tr'); row.tabIndex = 0;
     const star = cell('star', item.favorite ? '★' : '☆'); star.onclick = async (event) => { event.stopPropagation(); item.favorite = !item.favorite; item.updatedAt = Date.now(); await persist(); render(); }; row.append(star);
-    const info = cell('info'); const titleLine = document.createElement('div'); titleLine.className = 'folder-title-line'; const name = document.createElement('div'); name.className = 'folder-name'; name.textContent = item.name; titleLine.append(name); const fileTotal = normalizeFiles(item.files).length; if (fileTotal > 0) { const fileCount = document.createElement('span'); fileCount.className = 'file-count-badge'; fileCount.textContent = `ファイル ${fileTotal}件`; fileCount.title = `登録ファイル数：${fileTotal}件`; titleLine.append(fileCount); } info.append(titleLine);
+    const info = cell('info'); const titleLine = document.createElement('div'); titleLine.className = 'folder-title-line'; const name = document.createElement('div'); name.className = 'folder-name'; name.textContent = item.name; titleLine.append(name); if (item.openCount > 0) titleLine.append(openCountBadge(item.openCount, item.lastOpenedAt)); const fileTotal = normalizeFiles(item.files).length; if (fileTotal > 0) { const fileCount = document.createElement('span'); fileCount.className = 'file-count-badge'; fileCount.textContent = `ファイル ${fileTotal}件`; fileCount.title = `登録ファイル数：${fileTotal}件`; titleLine.append(fileCount); } info.append(titleLine);
     if (item.memo) { const memo = document.createElement('div'); memo.className = 'memo'; memo.textContent = item.memo; info.append(memo); } row.append(info);
     const tags = cell('tags'); (item.tags ?? []).forEach((tag) => { const badge = document.createElement('button'); badge.type = 'button'; badge.className = `tag${state.tag === tag ? ' active' : ''}`; badge.textContent = tag; decorateTag(badge, tag); badge.onclick = (event) => { event.stopPropagation(); state.tag = state.tag === tag ? '' : tag; render(); }; tags.append(badge); }); row.append(tags);
     row.append(cell('path', item.path));
@@ -186,11 +205,27 @@ function render() {
     row.onkeydown = (event) => { if (event.key !== 'Enter') return; if (fileTotal === 0) { showToast('ファイルは登録されていません'); return; } row.classList.toggle('show-files'); }; $('#tableBody').append(row); if (fileTotal > 0) { const fileRow = document.createElement('tr'); fileRow.className = 'file-list-row'; const fileCell = document.createElement('td'); fileCell.colSpan = 5; fileCell.append(createFileList(item)); fileRow.append(fileCell); $('#tableBody').append(fileRow); }
   });
 }
+function unregisteredHistory() { const registered = new Set(state.items.map((item) => pathKey(item.path))); return Object.entries(state.openLog).filter(([key]) => !registered.has(key)).map(([, entry]) => entry); }
+// 一時的に開いた（未登録の）フォルダーの行。回数を目安に、そのまま登録できる
+function renderUnregisteredRow(entry) {
+  const row = document.createElement('tr'); row.className = 'unregistered-row'; row.title = '一時的に開いたフォルダー（未登録）・ダブルクリックで登録';
+  row.append(cell('star', ''));
+  const info = cell('info'); const titleLine = document.createElement('div'); titleLine.className = 'folder-title-line'; const name = document.createElement('div'); name.className = 'folder-name'; name.textContent = entry.name; const badge = document.createElement('span'); badge.className = 'unregistered-badge'; badge.textContent = '未登録'; titleLine.append(name, badge, openCountBadge(entry.openCount, entry.lastOpenedAt)); info.append(titleLine);
+  const meta = document.createElement('div'); meta.className = 'memo open-history-meta'; meta.textContent = `一時的に開いた履歴・最終 ${formatOpenedAt(entry.lastOpenedAt)}${entry.firstOpenedAt && formatOpenedAt(entry.firstOpenedAt) !== formatOpenedAt(entry.lastOpenedAt) ? `（初回 ${formatOpenedAt(entry.firstOpenedAt)}）` : ''}`; info.append(meta); row.append(info, cell('tags'), cell('path', entry.path));
+  const actions = cell('actions');
+  const copy = document.createElement('button'); copy.textContent = 'コピー'; copy.onclick = async () => { await navigator.clipboard.writeText(entry.path); showToast('コピーしました'); };
+  const open = document.createElement('button'); open.className = 'open'; open.textContent = '開く'; open.onclick = () => openFolder(entry);
+  const register = document.createElement('button'); register.className = 'edit register'; register.textContent = '登録'; register.title = 'このフォルダーを恒久的に登録する'; register.onclick = () => openEditor(null, entry.path);
+  const remove = document.createElement('button'); remove.className = 'delete'; remove.textContent = '削除'; remove.title = '履歴から削除'; remove.onclick = async () => { if (!confirm(`「${entry.name}」を履歴から削除しますか？`)) return; delete state.openLog[pathKey(entry.path)]; await persist(); render(); showToast('履歴から削除しました'); };
+  actions.append(copy, open, register, remove); row.append(actions);
+  row.ondblclick = (event) => { if (event.target.closest('button')) return; event.preventDefault(); openEditor(null, entry.path); };
+  return row;
+}
 
 $('#pathForm').onsubmit = async (event) => {
   event.preventDefault(); const id = $('#itemId').value; const existing = state.items.find((item) => item.id === id); const path = cleanFolderPath($('#pathInput').value); if (!path) { showToast('フォルダーパスを入力してください'); return; } const derivedName = deriveFolderName(path);
   const now = Date.now();
-  const item = { id: id || crypto.randomUUID(), name: $('#nameInput').value.trim() || derivedName, path, memo: $('#memoInput').value.trim(), tags: collectEditorTags(), favorite: $('#favoriteInput').checked, files: readFileRows(), createdAt: existing?.createdAt ?? existing?.updatedAt ?? now, updatedAt: now, lastOpenedAt: existing?.lastOpenedAt ?? 0, openCount: existing?.openCount ?? 0 };
+  const item = { id: id || crypto.randomUUID(), name: $('#nameInput').value.trim() || derivedName, path, memo: $('#memoInput').value.trim(), tags: collectEditorTags(), favorite: $('#favoriteInput').checked, files: readFileRows(), createdAt: existing?.createdAt ?? existing?.updatedAt ?? now, updatedAt: now, lastOpenedAt: existing?.lastOpenedAt ?? openLogEntry(path)?.lastOpenedAt ?? 0, openCount: existing?.openCount ?? openLogEntry(path)?.count ?? 0 };
   if (existing) Object.assign(existing, item); else state.items.push(item); await persist(); dialog.close(); render(); showToast(existing ? '更新しました' : '登録しました');
 };
 $('#addButton').onclick = () => openEditor(); $('#addFileButton').onclick = () => addFileRow(); $('#nameInput').oninput = () => { nameAutoFill = $('#nameInput').value.trim() === deriveFolderName($('#pathInput').value); }; $('#pathInput').oninput = syncNameFromPath; $('#pathInput').onchange = () => { const cleaned = cleanFolderPath($('#pathInput').value); if (cleaned && cleaned !== $('#pathInput').value) { $('#pathInput').value = cleaned; syncNameFromPath(); } }; $('#closeDialog').onclick = $('#cancelButton').onclick = () => dialog.close();
@@ -207,9 +242,9 @@ $('#tagForm').onsubmit = async (event) => {
   if (state.tag) state.tag = renamed[state.tag] ?? state.tag; await persist(); $('#tagDialog').close(); render(); showToast('タグを更新しました');
 };
 document.querySelectorAll('.view-tab').forEach((button) => button.onclick = () => { state.view = button.dataset.view; document.querySelectorAll('.view-tab').forEach((tab) => tab.classList.toggle('active', tab === button)); render(); });
-function buildBackup() { return { filename: backupFilename(), content: JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), items: state.items, tagSortKeys: state.tagSortKeys, batchOpen: state.batchPaths }, null, 2), signatures: makeSignatures() }; }
+function buildBackup() { return { filename: backupFilename(), content: JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), items: state.items, tagSortKeys: state.tagSortKeys, batchOpen: state.batchPaths, openLog: state.openLog }, null, 2), signatures: makeSignatures() }; }
 async function markBackedUp(signatures) { state.backupSignatures = signatures; await store.set({ folderPathBackupState: state.backupSignatures }); updateBackupCount(); }
-async function applyBackup(data) { if (!Array.isArray(data?.items) || data.items.some((item) => typeof item.name !== 'string' || typeof item.path !== 'string')) throw new Error('バックアップを読み込めませんでした'); state.items = data.items.map((item) => { const updatedAt = Number(item.updatedAt) || Date.now(); return { id: item.id || crypto.randomUUID(), name: item.name, path: item.path, memo: typeof item.memo === 'string' ? item.memo : '', tags: Array.isArray(item.tags) ? item.tags : [], favorite: Boolean(item.favorite), createdAt: Number(item.createdAt) || updatedAt, updatedAt, files: normalizeFiles(item.files), lastOpenedAt: Number(item.lastOpenedAt) || 0, openCount: Number(item.openCount) || 0 }; }); state.tagSortKeys = data.tagSortKeys && typeof data.tagSortKeys === 'object' ? data.tagSortKeys : {}; if (Array.isArray(data.batchOpen)) state.batchPaths = normalizeBatchPaths(data.batchOpen); await persist(); render(); showToast(`${state.items.length}件を復元しました`); }
+async function applyBackup(data) { if (!Array.isArray(data?.items) || data.items.some((item) => typeof item.name !== 'string' || typeof item.path !== 'string')) throw new Error('バックアップを読み込めませんでした'); state.items = data.items.map((item) => { const updatedAt = Number(item.updatedAt) || Date.now(); return { id: item.id || crypto.randomUUID(), name: item.name, path: item.path, memo: typeof item.memo === 'string' ? item.memo : '', tags: Array.isArray(item.tags) ? item.tags : [], favorite: Boolean(item.favorite), createdAt: Number(item.createdAt) || updatedAt, updatedAt, files: normalizeFiles(item.files), lastOpenedAt: Number(item.lastOpenedAt) || 0, openCount: Number(item.openCount) || 0 }; }); state.tagSortKeys = data.tagSortKeys && typeof data.tagSortKeys === 'object' ? data.tagSortKeys : {}; if (Array.isArray(data.batchOpen)) state.batchPaths = normalizeBatchPaths(data.batchOpen); if (data.openLog && typeof data.openLog === 'object') state.openLog = normalizeOpenLog(data.openLog); await persist(); render(); showToast(`${state.items.length}件を復元しました`); }
 $('#exportButton').onclick = async () => { const { filename, content, signatures } = buildBackup(); const blob = new Blob([content], { type: 'application/json' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = filename; link.click(); URL.revokeObjectURL(link.href); await markBackedUp(signatures); showToast('バックアップを作成しました'); };
 $('#importButton').onclick = () => $('#importInput').click();
 $('#importInput').onchange = async (event) => { try { await applyBackup(JSON.parse(await event.target.files[0].text())); } catch { showToast('バックアップを読み込めませんでした'); } event.target.value = ''; };
@@ -245,7 +280,7 @@ async function openBatchFolders() {
   try {
     const result = await openFoldersWithExtension(paths, { newWindow: !state.batchKeepTabs });
     const opened = new Set(result.opened ?? paths); const now = Date.now();
-    state.items.filter((item) => opened.has(item.path)).forEach((item) => { item.lastOpenedAt = now; item.openCount = (item.openCount ?? 0) + 1; }); await persist(); render();
+    await recordOpened(opened);
     showToast(result.missing?.length ? `${opened.size}件を開きました（見つからないフォルダー：${result.missing.join('、')}）` : `${opened.size}件をタブで開きました`);
   } catch (error) {
     await navigator.clipboard.writeText(paths.join('\r\n')).catch(() => {});
@@ -283,7 +318,7 @@ function openTempDialog() { $('#tempKeepTabs').checked = state.batchKeepTabs; re
 // targets を渡したときは、そのフォルダーだけを開く（一覧の各行の「開く」ボタン）
 async function openTempFolders(targets) {
   const all = renderTempPreview(); const paths = Array.isArray(targets) ? targets : all; if (!paths.length) return;
-  const markOpened = async (opened) => { const now = Date.now(); const keys = new Set([...opened].map((path) => path.toLocaleLowerCase())); const hits = state.items.filter((item) => keys.has(cleanFolderPath(item.path).toLocaleLowerCase())); hits.forEach((item) => { item.lastOpenedAt = now; item.openCount = (item.openCount ?? 0) + 1; }); if (hits.length) { await persist(); render(); } };
+  const markOpened = (opened) => recordOpened(opened);
   $('#tempOpenButton').disabled = true;
   try {
     if (paths.length === 1) {
@@ -305,7 +340,7 @@ $('#tempPathInput').onkeydown = (event) => { if (event.key === 'Enter' && (event
 $('#tempKeepTabs').onchange = (event) => { state.batchKeepTabs = event.target.checked; try { localStorage.setItem('folderPathBatchKeepTabs', String(state.batchKeepTabs)); } catch {} };
 $('#tempOpenButton').onclick = () => openTempFolders();
 // 以前の拡張機能の画面で使っていたデータと設定。Webアプリに何も保存されていないときに一度だけ引き継ぐ
-const LEGACY_KEYS = ['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState', 'folderPathBatchOpen', 'folderPathDriveClientId', 'folderPathDriveFolderId', 'folderPathDriveAutoSync', 'folderPathDriveSyncedAt', 'folderPathDriveSyncState'];
+const LEGACY_KEYS = ['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState', 'folderPathBatchOpen', 'folderPathOpenLog', 'folderPathDriveClientId', 'folderPathDriveFolderId', 'folderPathDriveAutoSync', 'folderPathDriveSyncedAt', 'folderPathDriveSyncState'];
 async function importLegacyData() {
   if ((await store.get('folderPaths')).folderPaths !== undefined) return false;
   const legacy = await loadLegacyExtensionData();
@@ -313,10 +348,10 @@ async function importLegacyData() {
   await store.set(Object.fromEntries(LEGACY_KEYS.filter((key) => legacy[key] !== undefined).map((key) => [key, legacy[key]])));
   return true;
 }
-(async () => { const imported = await importLegacyData(); if (imported) showToast('拡張機能に登録されていたデータを引き継ぎました'); const saved = await store.get(['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState', 'folderPathBatchOpen']); state.items = Array.isArray(saved.folderPaths) ? saved.folderPaths : []; state.tagSortKeys = saved.folderPathTagSortKeys && typeof saved.folderPathTagSortKeys === 'object' ? saved.folderPathTagSortKeys : {}; state.backupSignatures = saved.folderPathBackupState && typeof saved.folderPathBackupState === 'object' ? saved.folderPathBackupState : {}; state.batchPaths = normalizeBatchPaths(saved.folderPathBatchOpen); state.batchKeepTabs = localStorage.getItem('folderPathBatchKeepTabs') !== 'false'; render(); updateBackupCount();
+(async () => { const imported = await importLegacyData(); if (imported) showToast('拡張機能に登録されていたデータを引き継ぎました'); const saved = await store.get(['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState', 'folderPathBatchOpen', 'folderPathOpenLog']); state.items = Array.isArray(saved.folderPaths) ? saved.folderPaths : []; state.tagSortKeys = saved.folderPathTagSortKeys && typeof saved.folderPathTagSortKeys === 'object' ? saved.folderPathTagSortKeys : {}; state.backupSignatures = saved.folderPathBackupState && typeof saved.folderPathBackupState === 'object' ? saved.folderPathBackupState : {}; state.batchPaths = normalizeBatchPaths(saved.folderPathBatchOpen); state.openLog = normalizeOpenLog(saved.folderPathOpenLog); state.batchKeepTabs = localStorage.getItem('folderPathBatchKeepTabs') !== 'false'; render(); updateBackupCount();
   // 引き継いだDrive設定で同期を始めるよう、データの準備ができてから設定する
   setupDriveDialog({ applyBackup, onBackupStateChanged: (signatures) => { state.backupSignatures = signatures; updateBackupCount(); }, showToast }); })();
 
 // 別のタブで登録内容が変わったら、このタブの表示も合わせる
-window.addEventListener('storage', async (event) => { if (!['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState', 'folderPathBatchOpen'].includes(event.key)) return; const saved = await store.get(['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState', 'folderPathBatchOpen']); state.items = Array.isArray(saved.folderPaths) ? saved.folderPaths : []; state.tagSortKeys = saved.folderPathTagSortKeys ?? {}; state.backupSignatures = saved.folderPathBackupState ?? {}; state.batchPaths = normalizeBatchPaths(saved.folderPathBatchOpen); render(); if ($('#batchDialog').open) renderBatchRows(); updateBackupCount(); });
+window.addEventListener('storage', async (event) => { if (!['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState', 'folderPathBatchOpen', 'folderPathOpenLog'].includes(event.key)) return; const saved = await store.get(['folderPaths', 'folderPathTagSortKeys', 'folderPathBackupState', 'folderPathBatchOpen', 'folderPathOpenLog']); state.items = Array.isArray(saved.folderPaths) ? saved.folderPaths : []; state.tagSortKeys = saved.folderPathTagSortKeys ?? {}; state.backupSignatures = saved.folderPathBackupState ?? {}; state.batchPaths = normalizeBatchPaths(saved.folderPathBatchOpen); state.openLog = normalizeOpenLog(saved.folderPathOpenLog); render(); if ($('#batchDialog').open) renderBatchRows(); updateBackupCount(); });
 $('#appVersion').textContent = `v${APP_VERSION}`;

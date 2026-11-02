@@ -72,7 +72,7 @@ const driveHandlers = {
   },
   async drive_mark_synced({ modifiedTime }) {
     // 読み込んだ内容をページが保存した後に呼ばれる。保存済みの内容を同期済みとして記録する
-    const signatures = makeSignatures(await store.get(['folderPaths', 'folderPathTagSortKeys', 'folderPathBatchOpen']));
+    const signatures = makeSignatures(await store.get(['folderPaths', 'folderPathTagSortKeys', 'folderPathBatchOpen', 'folderPathOpenLog']));
     await store.set({ folderPathDriveSyncedAt: modifiedTime, folderPathDriveSyncState: signatures, folderPathBackupState: signatures });
     await setSyncStatus('synced');
     return {};
@@ -87,7 +87,7 @@ async function setSyncStatus(state, message = '') {
 // 登録内容が変わったら、自動同期が有効なときだけDriveの同期ファイルを上書きする
 let autoSaveTimer;
 onStoreChanged((changes) => {
-  if (!(changes.folderPaths || changes.folderPathTagSortKeys || changes.folderPathBatchOpen)) return;
+  if (!(changes.folderPaths || changes.folderPathTagSortKeys || changes.folderPathBatchOpen || changes.folderPathOpenLog)) return;
   clearTimeout(autoSaveTimer);
   autoSaveTimer = setTimeout(() => autoSave().catch(() => {}), 2000);
 });
@@ -114,11 +114,12 @@ async function autoSave() {
   }
 }
 
-function makeSignatures({ folderPaths, folderPathTagSortKeys, folderPathBatchOpen }) {
+function makeSignatures({ folderPaths, folderPathTagSortKeys, folderPathBatchOpen, folderPathOpenLog }) {
   const items = Array.isArray(folderPaths) ? folderPaths : [];
   const signatures = Object.fromEntries(items.map((item) => [item.id, JSON.stringify(item)]));
   if (folderPathTagSortKeys && Object.keys(folderPathTagSortKeys).length) signatures.__tagSortKeys = JSON.stringify(folderPathTagSortKeys);
   if (Array.isArray(folderPathBatchOpen) && folderPathBatchOpen.length) signatures.__batchOpen = JSON.stringify(folderPathBatchOpen);
+  if (folderPathOpenLog && typeof folderPathOpenLog === 'object' && Object.keys(folderPathOpenLog).length) signatures.__openLog = JSON.stringify(folderPathOpenLog);
   return signatures;
 }
 
@@ -128,7 +129,7 @@ function sameSignatures(a = {}, b = {}) {
 }
 
 async function syncCheck({ silent }) {
-  const saved = await store.get(['folderPaths', 'folderPathTagSortKeys', 'folderPathBatchOpen', 'folderPathDriveAutoSync', 'folderPathDriveSyncedAt', 'folderPathDriveSyncState']);
+  const saved = await store.get(['folderPaths', 'folderPathTagSortKeys', 'folderPathBatchOpen', 'folderPathOpenLog', 'folderPathDriveAutoSync', 'folderPathDriveSyncedAt', 'folderPathDriveSyncState']);
   let file;
   try {
     file = await findSyncFile({ silent });
@@ -147,13 +148,14 @@ async function syncCheck({ silent }) {
 }
 
 async function saveToDrive({ force, silent }) {
-  const saved = await store.get(['folderPaths', 'folderPathTagSortKeys', 'folderPathBatchOpen', 'folderPathDriveSyncedAt']);
+  const saved = await store.get(['folderPaths', 'folderPathTagSortKeys', 'folderPathBatchOpen', 'folderPathOpenLog', 'folderPathDriveSyncedAt']);
   const remote = await findSyncFile({ silent });
   if (!force && remote && remote.modifiedTime !== saved.folderPathDriveSyncedAt) return { conflict: true, modifiedTime: remote.modifiedTime };
   const items = Array.isArray(saved.folderPaths) ? saved.folderPaths : [];
   const tagSortKeys = saved.folderPathTagSortKeys && typeof saved.folderPathTagSortKeys === 'object' ? saved.folderPathTagSortKeys : {};
   const batchOpen = Array.isArray(saved.folderPathBatchOpen) ? saved.folderPathBatchOpen : [];
-  const content = JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), items, tagSortKeys, batchOpen }, null, 2);
+  const openLog = saved.folderPathOpenLog && typeof saved.folderPathOpenLog === 'object' ? saved.folderPathOpenLog : {};
+  const content = JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), items, tagSortKeys, batchOpen, openLog }, null, 2);
   const fields = 'fields=id,name,modifiedTime&supportsAllDrives=true';
   let file;
   if (remote) {
