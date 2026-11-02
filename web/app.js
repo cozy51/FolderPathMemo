@@ -1,4 +1,4 @@
-const APP_VERSION = '2.3.0';
+const APP_VERSION = '2.3.1';
 const state = { items: [], query: '', view: 'all', tag: '', sort: 'registered-desc', tagSortKeys: {}, backupSignatures: {}, batchPaths: [], batchKeepTabs: true };
 const $ = (selector) => document.querySelector(selector);
 const dialog = $('#pathDialog');
@@ -249,10 +249,9 @@ function renderTempPreview() {
     const folder = document.createElement('div'); folder.className = 'temp-folder'; folder.textContent = path; row.append(folder);
     files.forEach((file) => {
       const line = document.createElement('div'); line.className = 'temp-file';
-      const label = document.createElement('span'); label.className = 'temp-file-label'; label.textContent = 'ファイル名を除外';
       const name = document.createElement('span'); name.className = 'temp-file-name'; name.textContent = `📄 ${file}`; name.title = file;
       const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'temp-file-copy'; copy.textContent = 'ファイル名をコピー'; copy.onclick = async () => { await navigator.clipboard.writeText(file); showToast('ファイル名をコピーしました'); };
-      line.append(label, name, copy); row.append(line);
+      line.append(name, copy); row.append(line);
     });
     return row;
   }));
