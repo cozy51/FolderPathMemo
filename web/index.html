@@ -10,7 +10,7 @@
   <body>
     <header>
       <div class="brand"><img src="icons/icon.svg" alt="" /><div><h1>FolderPath Memo</h1><p>フォルダー一覧 <span id="appVersion" class="version-badge"></span></p></div></div>
-      <div class="header-actions"><button id="importButton" class="ghost-button" type="button">インポート</button><div class="backup-control"><button id="exportButton" class="ghost-button" type="button">バックアップ</button><span id="backupChangeCount" class="change-badge" title="前回バックアップからの変更件数">0</span></div><button id="batchButton" class="ghost-button" type="button" title="登録したフォルダーをエクスプローラーのタブでまとめて開く">📂 まとめて開く</button><button id="driveButton" class="ghost-button" type="button" title="Google Driveと同期">Google Drive</button><button id="addButton" class="primary-button" type="button">＋ 新規登録</button><input id="importInput" type="file" accept="application/json,.json" hidden /></div>
+      <div class="header-actions"><button id="importButton" class="ghost-button" type="button">インポート</button><div class="backup-control"><button id="exportButton" class="ghost-button" type="button">バックアップ</button><span id="backupChangeCount" class="change-badge" title="前回バックアップからの変更件数">0</span></div><button id="batchButton" class="ghost-button" type="button" title="登録したフォルダーをエクスプローラーのタブでまとめて開く">📂 まとめて開く</button><button id="tempButton" class="ghost-button" type="button" title="パスを貼り付けて、登録せずにその場で開く">⚡ 一時的に開く</button><button id="driveButton" class="ghost-button" type="button" title="Google Driveと同期">Google Drive</button><button id="addButton" class="primary-button" type="button">＋ 新規登録</button><input id="importInput" type="file" accept="application/json,.json" hidden /></div>
     </header>
     <main>
       <section class="controls">
@@ -65,6 +65,17 @@
         <p id="batchEmpty" class="batch-empty" hidden>まだフォルダーがありません。上の欄から追加してください。</p>
         <label class="batch-keep"><input id="batchKeepTabs" type="checkbox" checked /> 既存のエクスプローラーにタブを追加（既存タブは残す）</label>
         <div class="dialog-actions"><button id="batchCloseButton" class="ghost-button" type="button">閉じる</button><button id="batchOpenButton" class="primary-button" type="button">登録フォルダーをタブで開く</button></div>
+      </div>
+    </dialog>
+    <dialog id="tempDialog" class="batch-dialog temp-dialog">
+      <div class="batch-content">
+        <div class="dialog-header"><div><p>OPEN TEMPORARILY</p><h2>フォルダーを一時的に開く</h2></div><button id="closeTempDialog" class="close-button" type="button" aria-label="閉じる">×</button></div>
+        <p class="tag-dialog-hint">パスを貼り付けると、登録せずにその場で開きます（1行に1つ）。前後の引用符・括弧などの余計な文字や、末尾のファイル名は自動で取り除きます。</p>
+        <textarea id="tempPathInput" class="temp-input" rows="5" spellcheck="false" placeholder="例：&quot;\\server\share\フォルダー\資料.xlsx&quot;" aria-label="開くフォルダーパス"></textarea>
+        <p id="tempPreviewLabel" class="temp-preview-label"></p>
+        <ol id="tempPreview" class="batch-rows temp-preview"></ol>
+        <label class="batch-keep"><input id="tempKeepTabs" type="checkbox" checked /> 既存のエクスプローラーにタブを追加（複数のときは、オフで新しいウィンドウに開く）</label>
+        <div class="dialog-actions"><button id="tempClearButton" class="ghost-button" type="button">クリア</button><button id="tempCloseButton" class="ghost-button" type="button">閉じる</button><button id="tempOpenButton" class="primary-button" type="button" title="Ctrl+Enterでも開けます">開く</button></div>
       </div>
     </dialog>
     <dialog id="driveDialog" class="drive-dialog">
