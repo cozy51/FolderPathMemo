@@ -54,3 +54,18 @@ chrome.action.onClicked.addListener(async () => {
   await chrome.tabs.update(tab.id, { active: true });
   await chrome.windows.update(tab.windowId, { focused: true });
 });
+
+// Chromeの起動時に復元されたタブや、拡張機能の有効化・更新より前から開いていたタブには、
+// manifest の content_scripts が入らないことがある。その場合「開く」が拡張機能に届かないため、
+// 開いているWebアプリのタブへ中継スクリプトを入れ直す（web-bridge.js 側で二重に動かないようにしている）
+async function injectBridgeIntoOpenTabs() {
+  const tabs = await chrome.tabs.query({ url: `${WEB_APP_URL}*` }).catch(() => []);
+  await Promise.all(tabs.map((tab) => chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['web-bridge.js'] }).catch(() => {})));
+}
+chrome.runtime.onStartup.addListener(injectBridgeIntoOpenTabs);
+chrome.runtime.onInstalled.addListener(injectBridgeIntoOpenTabs);
+// 起動直後でまだ読み込み中だったタブは、読み込みが終わったところで確認する
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status !== 'complete' || !tab.url?.startsWith(WEB_APP_URL)) return;
+  chrome.scripting.executeScript({ target: { tabId }, files: ['web-bridge.js'] }).catch(() => {});
+});
