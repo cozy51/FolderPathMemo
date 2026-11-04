@@ -123,7 +123,7 @@ async function openFolder(item) {
     showToast(response.openedInTab ? '新しいタブで開きました' : 'エクスプローラーで開きました');
   } catch (error) {
     await navigator.clipboard.writeText(item.path);
-    showToast(await extensionReady ? `開けなかったためパスをコピーしました（${error.message}）` : 'パスをコピーしました（Explorerで開くには拡張機能が必要です）');
+    { const unavailable = await extensionUnavailableMessage(); showToast(unavailable ? `パスをコピーしました（${unavailable}）` : `開けなかったためパスをコピーしました（${error.message}）`); }
   }
 }
 function openEditor(item, initialPath = '') {
@@ -291,7 +291,7 @@ async function openBatchFolders() {
     showToast(result.missing?.length ? `${opened.size}件を開きました（見つからないフォルダー：${result.missing.join('、')}）` : `${opened.size}件をタブで開きました`);
   } catch (error) {
     await navigator.clipboard.writeText(paths.join('\r\n')).catch(() => {});
-    showToast(await extensionReady ? `開けなかったためパスをコピーしました（${error.message}）` : 'パスをコピーしました（Explorerで開くには拡張機能が必要です）');
+    { const unavailable = await extensionUnavailableMessage(); showToast(unavailable ? `パスをコピーしました（${unavailable}）` : `開けなかったためパスをコピーしました（${error.message}）`); }
   } finally { renderBatchRows(); }
 }
 $('#batchButton').onclick = openBatchDialog; $('#closeBatchDialog').onclick = $('#batchCloseButton').onclick = () => $('#batchDialog').close();
@@ -338,7 +338,7 @@ async function openTempFolders(targets) {
     }
   } catch (error) {
     await navigator.clipboard.writeText(paths.join('\r\n')).catch(() => {});
-    showToast(await extensionReady ? `開けなかったためパスをコピーしました（${error.message}）` : 'パスをコピーしました（Explorerで開くには拡張機能が必要です）');
+    { const unavailable = await extensionUnavailableMessage(); showToast(unavailable ? `パスをコピーしました（${unavailable}）` : `開けなかったためパスをコピーしました（${error.message}）`); }
   } finally { renderTempPreview(); }
 }
 $('#tempButton').onclick = openTempDialog; $('#closeTempDialog').onclick = $('#tempCloseButton').onclick = () => $('#tempDialog').close();
