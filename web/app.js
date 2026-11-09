@@ -1,4 +1,4 @@
-const APP_VERSION = '2.6.5';
+const APP_VERSION = '2.6.6';
 const state = { items: [], query: '', view: 'all', tag: '', sort: 'registered-desc', tagSortKeys: {}, backupSignatures: {}, batchPaths: [], batchKeepTabs: true, openLog: {} };
 const $ = (selector) => document.querySelector(selector);
 const dialog = $('#pathDialog');
@@ -18,7 +18,15 @@ function parseFolderPath(text) {
   const start = path.search(/\\\\[^\\\s]|[A-Za-z]:[\\/]/);
   if (start > 0) path = path.slice(start);
   // パスに使えない文字が出てきたら、そこから後ろは余計な文字として捨てる
-  const end = path.search(/["<>|*?＜＞「」『』【】“”\t\r\n]/);
+  // 「」『』【】はフォルダー名に使われることがあるので（例：【実験報告書】〜）、対になっているときは残し、対にならないものだけ区切りとみなす
+  let end = path.search(/["<>|*?＜＞“”\t\r\n]/); if (end < 0) end = path.length;
+  for (const [open, close] of ['「」', '『』', '【】']) {
+    let depth = 0;
+    for (let i = 0; i < end; i++) {
+      if (path[i] === open) { if (path.indexOf(close, i + 1) < 0 || path.indexOf(close, i + 1) >= end) { end = i; break; } depth++; }
+      else if (path[i] === close) { if (depth === 0) { end = i; break; } depth--; }
+    }
+  }
   if (end > 0) path = path.slice(0, end);
   path = path.trim();
   while (path && PATH_OPENERS.includes(path[0]) && !PATH_CLOSERS.includes(path[0])) path = path.slice(1).trim();
