@@ -1,4 +1,4 @@
-const APP_VERSION = '2.6.8';
+const APP_VERSION = '2.6.9';
 const state = { items: [], query: '', view: 'all', tag: '', sort: 'registered-desc', tagSortKeys: {}, backupSignatures: {}, batchPaths: [], batchKeepTabs: true, openLog: {} };
 const $ = (selector) => document.querySelector(selector);
 const dialog = $('#pathDialog');
@@ -311,12 +311,36 @@ $('#batchKeepTabs').onchange = (event) => { state.batchKeepTabs = event.target.c
 $('#batchOpenButton').onclick = openBatchFolders;
 
 // 一時的に開く：貼り付けたパスを登録せずにその場で開く（1行に1つ、余計な文字やファイル名は取り除く）
+// パスを階層ごとに区切って表示し、クリックした階層までのパスをコピーできるようにする。
+// フォルダー名が変わっていて開けないときに、開ける上の階層をコピーしてエクスプローラーから辿れる
+function createPathCrumbs(path) {
+  const wrap = document.createElement('div'); wrap.className = 'temp-folder path-crumbs';
+  const unc = path.startsWith('\\\\'); const segments = path.slice(unc ? 2 : 0).split('\\').filter(Boolean);
+  // \\server だけではエクスプローラーで開けないので、UNCは共有フォルダー（\\server\share）から選べるようにする
+  const firstSelectable = unc ? 1 : 0;
+  // 区切りの \ も含めて、コピーされる範囲をまとめて色付けする
+  const parts = [];
+  const highlight = (upTo) => parts.forEach(({ node, index }) => node.classList.toggle('in-range', upTo >= 0 && index <= upTo));
+  const separator = (text, index) => { const node = document.createElement('span'); node.className = 'path-sep'; node.textContent = text; parts.push({ node, index }); wrap.append(node); };
+  if (unc) separator('\\\\', 0);
+  segments.forEach((segment, index) => {
+    if (index > 0) separator('\\', index);
+    const prefix = (unc ? '\\\\' : '') + segments.slice(0, index + 1).join('\\') + (!unc && index === 0 ? '\\' : '');
+    if (index < firstSelectable) { const text = document.createElement('span'); text.className = 'path-crumb-static'; text.textContent = segment; parts.push({ node: text, index }); wrap.append(text); return; }
+    const crumb = document.createElement('button'); crumb.type = 'button'; crumb.className = 'path-crumb'; crumb.textContent = segment;
+    crumb.title = `ここまでをコピー：${prefix}`;
+    crumb.onmouseenter = crumb.onfocus = () => highlight(index); crumb.onmouseleave = crumb.onblur = () => highlight(-1);
+    crumb.onclick = async () => { await navigator.clipboard.writeText(prefix); showToast(`コピーしました：${segment} まで`); };
+    parts.push({ node: crumb, index }); wrap.append(crumb);
+  });
+  return wrap;
+}
 function renderTempPreview() {
   const entries = parseFolderPaths($('#tempPathInput').value); const paths = entries.map(({ path }) => path);
   $('#tempPreview').replaceChildren(...entries.map(({ path, files }) => {
     const row = document.createElement('li'); row.className = 'temp-row';
     const head = document.createElement('div'); head.className = 'temp-folder-row';
-    const folder = document.createElement('div'); folder.className = 'temp-folder'; folder.textContent = path;
+    const folder = createPathCrumbs(path);
     const open = document.createElement('button'); open.type = 'button'; open.className = 'temp-folder-open'; open.textContent = '開く'; open.title = 'このフォルダーだけを開く'; open.onclick = () => openTempFolders([path]);
     const copyPath = document.createElement('button'); copyPath.type = 'button'; copyPath.className = 'temp-folder-copy'; copyPath.textContent = 'コピー'; copyPath.title = 'エクスプローラーのアドレスバーに貼り付けて開けます'; copyPath.onclick = async () => { await navigator.clipboard.writeText(path); showToast('フォルダーパスをコピーしました'); };
     head.append(folder, copyPath, open); row.append(head);
@@ -329,7 +353,7 @@ function renderTempPreview() {
     return row;
   }));
   const fileTotal = entries.reduce((total, { files }) => total + files.length, 0);
-  $('#tempPreviewLabel').textContent = paths.length ? `開くフォルダー（${paths.length}件）${fileTotal ? `・ファイル名を含むパスは、そのファイルがあるフォルダーを開きます` : ''}` : '';
+  $('#tempPreviewLabel').textContent = paths.length ? `開くフォルダー（${paths.length}件）・フォルダー名をクリックすると、その階層までのパスをコピーします${fileTotal ? `・ファイル名を含むパスは、そのファイルがあるフォルダーを開きます` : ''}` : '';
   $('#tempOpenButton').disabled = paths.length === 0; $('#tempOpenButton').textContent = paths.length > 1 ? `${paths.length}件をタブで開く` : '開く';
   return paths;
 }
