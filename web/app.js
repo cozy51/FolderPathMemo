@@ -1,4 +1,4 @@
-const APP_VERSION = '2.6.7';
+const APP_VERSION = '2.6.8';
 const state = { items: [], query: '', view: 'all', tag: '', sort: 'registered-desc', tagSortKeys: {}, backupSignatures: {}, batchPaths: [], batchKeepTabs: true, openLog: {} };
 const $ = (selector) => document.querySelector(selector);
 const dialog = $('#pathDialog');
@@ -318,7 +318,8 @@ function renderTempPreview() {
     const head = document.createElement('div'); head.className = 'temp-folder-row';
     const folder = document.createElement('div'); folder.className = 'temp-folder'; folder.textContent = path;
     const open = document.createElement('button'); open.type = 'button'; open.className = 'temp-folder-open'; open.textContent = '開く'; open.title = 'このフォルダーだけを開く'; open.onclick = () => openTempFolders([path]);
-    head.append(folder, open); row.append(head);
+    const copyPath = document.createElement('button'); copyPath.type = 'button'; copyPath.className = 'temp-folder-copy'; copyPath.textContent = 'コピー'; copyPath.title = 'エクスプローラーのアドレスバーに貼り付けて開けます'; copyPath.onclick = async () => { await navigator.clipboard.writeText(path); showToast('フォルダーパスをコピーしました'); };
+    head.append(folder, copyPath, open); row.append(head);
     files.forEach((file) => {
       const line = document.createElement('div'); line.className = 'temp-file';
       const name = document.createElement('span'); name.className = 'temp-file-name'; name.textContent = `📄 ${file}`; name.title = file;
