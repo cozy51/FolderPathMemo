@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Collections;
@@ -15,7 +16,7 @@ internal static class FolderPathNativeHost
 {
     // Kept in step with the version in manifest.json; the installer verifies that the host it
     // just built reports this value.
-    private const string HostVersion = "1.4.1";
+    private const string HostVersion = "1.4.2";
 
     private const int MaximumMessageBytes = 1024 * 1024;
     private const int Windows11ExplorerTabsBuild = 22621;
@@ -162,10 +163,10 @@ internal static class FolderPathNativeHost
                     OpenMany(output, serializer, request);
                     return;
                 }
-                path = request.ContainsKey("path") ? Convert.ToString(request["path"]) : string.Empty;
+                path = CleanPath(request.ContainsKey("path") ? Convert.ToString(request["path"]) : string.Empty);
                 if (string.IsNullOrWhiteSpace(path) || path.IndexOf('\0') >= 0) throw new InvalidDataException("Invalid folder path.");
 
-                Log("request path=" + path);
+                Log("request path=" + path + " exists=" + Directory.Exists(path));
                 bool openedInTab = TryOpenInExistingExplorerTab(path);
                 if (!openedInTab)
                 {
@@ -204,7 +205,7 @@ internal static class FolderPathNativeHost
         {
             foreach (object value in requested)
             {
-                string candidate = Convert.ToString(value);
+                string candidate = CleanPath(Convert.ToString(value));
                 if (!string.IsNullOrWhiteSpace(candidate) && candidate.IndexOf('\0') < 0) paths.Add(candidate.Trim());
             }
         }
@@ -253,6 +254,27 @@ internal static class FolderPathNativeHost
         Write(output, serializer.Serialize(new { ok = opened.Count > 0, opened = opened, missing = missing,
             openedInTabs = openedInTabs, version = HostVersion,
             error = opened.Count > 0 ? null : "Folder not found: " + string.Join(", ", missing.ToArray()) }));
+    }
+
+    // Text copied from Teams or Outlook can carry invisible format characters such as U+200E or
+    // U+202A. They make the path name a different, non-existent folder while it still looks
+    // identical, so Explorer reports it as not found. Drop them and log what was removed.
+    private static string CleanPath(string path)
+    {
+        if (path == null) return string.Empty;
+        var cleaned = new StringBuilder(path.Length);
+        var removed = new StringBuilder();
+        foreach (char character in path)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(character) == UnicodeCategory.Format)
+            {
+                removed.Append(" U+").Append(((int)character).ToString("X4"));
+                continue;
+            }
+            cleaned.Append(character);
+        }
+        if (removed.Length > 0) Log("removed invisible characters:" + removed);
+        return cleaned.ToString().Trim();
     }
 
     private static bool SupportsExplorerTabs()

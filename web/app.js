@@ -1,4 +1,4 @@
-const APP_VERSION = '2.6.6';
+const APP_VERSION = '2.6.7';
 const state = { items: [], query: '', view: 'all', tag: '', sort: 'registered-desc', tagSortKeys: {}, backupSignatures: {}, batchPaths: [], batchKeepTabs: true, openLog: {} };
 const $ = (selector) => document.querySelector(selector);
 const dialog = $('#pathDialog');
@@ -7,10 +7,13 @@ let editingTags = new Set();
 // コピーしたパスに付いてくる余計な文字（前後の引用符・括弧・説明文など）や末尾のファイル名を取り除き、フォルダーパスだけにする。
 // 例：<\\server\share\folder> → \\server\share\folder、"\\server\share\folder\資料.xlsx" → \\server\share\folder
 const PATH_OPENERS = '"\'`<＜《〈「『【(（[［“‘'; const PATH_CLOSERS = '"\'`>＞》〉」』】)）]］”’';
+// Teams・Outlookなどからコピーすると、ゼロ幅スペースや文字の向きを指定する見えない文字（U+200E・U+202Aなど）が混ざることがある。
+// 見た目は同じでも別のパスになり、エクスプローラーで「見つかりません」となるので取り除く
+const INVISIBLE_CHARS = /\p{Cf}/gu;
 const FILE_EXTENSION = /\.(?=[a-z0-9]*[a-z])[a-z0-9]{2,5}$/i;
 // 整形したフォルダーパスと、取り除いたファイル名（なければ空）を返す
 function parseFolderPath(text) {
-  let path = String(text ?? '').replace(/[\u200b\ufeff]/g, '').trim();
+  let path = String(text ?? '').replace(INVISIBLE_CHARS, '').trim();
   // file:///C:/folder → C:\folder、file://server/share → \\server\share
   const fileUrl = path.match(/file:\/\/\/?([^\s"'<>]+)/i);
   if (fileUrl) { try { const target = decodeURIComponent(fileUrl[1]).replace(/\//g, '\\'); path = /^[A-Za-z]:/.test(target) ? target : `\\\\${target}`; } catch {} }
@@ -49,7 +52,7 @@ function isFolderPath(path) { return /^\\\\[^\\\s]+\\[^\\]+|^[A-Za-z]:\\/.test(p
 // パスではない行から、ファイル名だけを取り出す（例：「ファイル名：資料.xlsx」→ 資料.xlsx）。見つからなければ空。
 // 「ファイル名：」のように見出しが付いていれば、拡張子がなくてもファイル名とみなす（例：「ファイル名：2026-V74-N-023-00」）
 function extractFileName(line) {
-  let name = String(line ?? '').replace(/[\u200b\ufeff]/g, '').trim();
+  let name = String(line ?? '').replace(INVISIBLE_CHARS, '').trim();
   const label = /^.*?(ファイル名?|file\s*name|ファイル)\s*[:：=＝]\s*/i; const labeled = label.test(name);
   name = name.replace(label, '');
   name = name.replace(/^.*[\\/]/, '').trim();
