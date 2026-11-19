@@ -45,7 +45,8 @@ async function extensionUnavailableMessage() {
 // Explorerの操作には時間がかかることがあるため、開く依頼だけは長めに待つ
 async function openFolderWithExtension(path) {
   if (!await isExtensionReady()) throw new Error('FolderPath Memo拡張機能が見つかりません');
-  const response = await callExtension('open_folder', { path }, 30000);
+  // 登録済みのパスに見えない文字が残っていても開けるよう、送る直前にも取り除く
+  const response = await callExtension('open_folder', { path: cleanPathForOpen(path) }, 30000);
   if (!response?.ok) throw new Error(response?.error || 'フォルダーを開けませんでした');
   return response;
 }
@@ -62,7 +63,7 @@ async function loadLegacyExtensionData() {
 const BATCH_HOST_VERSION = '1.4.0';
 async function openFoldersWithExtension(paths, { newWindow = false } = {}) {
   if (!await isExtensionReady()) throw new Error('FolderPath Memo拡張機能が見つかりません');
-  const response = await callExtension('open_folders', { paths, newWindow }, 30000 + paths.length * 15000);
+  const response = await callExtension('open_folders', { paths: paths.map(cleanPathForOpen), newWindow }, 30000 + paths.length * 15000);
   if (response?.ok) return response;
   if (response && response.version && compareVersions(response.version, BATCH_HOST_VERSION) >= 0) throw new Error(response.missing?.length ? `フォルダーが見つかりません：${response.missing.join('、')}` : response.error || 'フォルダーを開けませんでした');
   const opened = [];
@@ -72,6 +73,9 @@ async function openFoldersWithExtension(paths, { newWindow = false } = {}) {
   }
   return { ok: true, opened, missing: [] };
 }
+
+// コピー時に混ざるゼロ幅スペースや文字の向きを指定する文字（Unicodeの書式文字）は、見た目は同じでも別のパスになる
+function cleanPathForOpen(path) { return String(path ?? '').replace(/\p{Cf}/gu, '').trim(); }
 
 function compareVersions(a, b) {
   const left = String(a).split('.').map(Number); const right = String(b).split('.').map(Number);
