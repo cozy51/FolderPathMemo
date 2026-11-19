@@ -15,7 +15,7 @@ internal static class FolderPathNativeHost
 {
     // Kept in step with the version in manifest.json; the installer verifies that the host it
     // just built reports this value.
-    private const string HostVersion = "1.4.0";
+    private const string HostVersion = "1.4.1";
 
     private const int MaximumMessageBytes = 1024 * 1024;
     private const int Windows11ExplorerTabsBuild = 22621;
@@ -119,6 +119,16 @@ internal static class FolderPathNativeHost
 
     [DllImport("kernel32.dll")]
     private static extern uint GetCurrentThreadId();
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern int SHParseDisplayName(string name, IntPtr bindContext, out IntPtr pidl,
+        uint attributesIn, out uint attributesOut);
+
+    [DllImport("shell32.dll")]
+    private static extern uint ILGetSize(IntPtr pidl);
+
+    [DllImport("ole32.dll")]
+    private static extern void CoTaskMemFree(IntPtr memory);
 
     [STAThread]
     public static void Main(string[] arguments)
@@ -347,9 +357,15 @@ internal static class FolderPathNativeHost
             return false;
         }
 
+        // Navigate2 treats a string as a URL and turns a UNC path into file://, which can rewrite
+        // characters such as a full-width digit and point Explorer at a folder that does not
+        // exist. Handing it the folder's item ID list skips URL parsing entirely, exactly like
+        // typing the path into the address bar.
+        byte[] itemIdList = GetItemIdList(path);
+        if (itemIdList == null) return false;
         try
         {
-            InvokeMember(newTab, "Navigate2", BindingFlags.InvokeMethod, path);
+            InvokeMember(newTab, "Navigate2", BindingFlags.InvokeMethod, itemIdList);
         }
         catch (Exception exception)
         {
@@ -364,6 +380,30 @@ internal static class FolderPathNativeHost
         });
         Log("shell navigation confirmed=" + arrived);
         return true;
+    }
+
+    // Returns the folder's PIDL as a byte array, which COM interop passes to Navigate2 as the
+    // VT_ARRAY | VT_UI1 variant it accepts in place of a URL.
+    private static byte[] GetItemIdList(string path)
+    {
+        IntPtr pidl;
+        uint attributes;
+        int result = SHParseDisplayName(path, IntPtr.Zero, out pidl, 0, out attributes);
+        if (result != 0 || pidl == IntPtr.Zero)
+        {
+            Log("could not resolve the folder for the shell: 0x" + result.ToString("X8"));
+            return null;
+        }
+        try
+        {
+            byte[] bytes = new byte[ILGetSize(pidl)];
+            Marshal.Copy(pidl, bytes, 0, bytes.Length);
+            return bytes;
+        }
+        finally
+        {
+            CoTaskMemFree(pidl);
+        }
     }
 
     private static List<object> GetShellTabs()
